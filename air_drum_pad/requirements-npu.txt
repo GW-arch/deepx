@@ -1,5 +1,17 @@
-# NPU 실행 보드용: MediaPipe 없이 OpenCV + pygame + numpy 만 설치 가능
-# DX-RT Python(dx_engine)은 PyPI가 아니라 DEEPX dx_rt 저장소의 python_package 를 빌드해 설치합니다.
+# NPU 실행 보드용: MediaPipe 없이 OpenCV + pygame + numpy
+# DX-RT Python(dx_engine)은 PyPI wheel이 없을 수 있어, dx_rt 저장소에서 소스 빌드합니다.
 opencv-python>=4.8
 pygame>=2.5
 numpy>=1.26,<2.1
+
+# --- dx_engine (DX-RT Python) 설치 예시 ---
+# 보드에 DX-RT 3.x가 깔려 있다면, dx_engine 휠(구버전)만 pip으로 넣으면
+# InferenceEngine 생성이 멈추거나 malloc 오류가 날 수 있습니다. 아래처럼 소스 설치를 권장합니다.
+#
+#   python3 -m pip install --user --upgrade 'pip>=24' 'packaging>=24' 'scikit-build-core>=0.10' setuptools wheel
+#   cd ~/dx-all-suite/dx-runtime/dx_rt/python_package   # DX-AllSuite 경로는 환경에 맞게
+#   python3 -m pip install --user .
+#   python3 -c "import dx_engine; print(dx_engine.__version__)"
+#
+# 설치 후: dxrt-cli -r 0 로 NPU 리셋, models/vendor/hand_landmark_lite.dxnn 배치,
+# ./scripts/run_npu_piano.sh 또는 main.py --backend npu …

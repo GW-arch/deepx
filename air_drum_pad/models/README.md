@@ -11,6 +11,8 @@
 
 MediaPipe **앱 전체**가 아니라, 그 안의 **손 랜드마크 신경망 파일**을 ONNX로 옮긴 뒤 DXNN으로 빌드하는 흐름입니다.
 
+**Palm 검출까지 NPU로** 올리는 로드맵·전처리 상수·export 스모크는 [`docs/PLAN_NPU_FULL_HAND_PIPELINE.md`](../docs/PLAN_NPU_FULL_HAND_PIPELINE.md) 와 `tools/export_mediapipe_palm_onnx.py`, `tools/palm_mp_spec.py`, `tools/palm_letterbox.py` 를 참고하세요.
+
 ## 1) ONNX 만들기 (호스트)
 
 ```bash
@@ -50,7 +52,9 @@ export DX_COMPILE_USER=user12
 ./tools/compile_server_snu.sh all
 ```
 
-레이아웃 JSON(`models/dxnn_layout.mediapipe_hand_lite*.json`)은 **컴파일된 `.dxnn`의 출력 텐서 순서**에 맞춰져 있습니다(`parse_model -m …` 로 확인). 손 위치가 이상하면 `outputs.landmarks_tensor_index` 를 0↔1 로 바꿔 보세요.
+레이아웃 JSON(`models/dxnn_layout.mediapipe_hand_lite*.json`)은 **`parse_model -m …`로 확인한 출력 순서**에 맞춥니다.  
+MediaPipe 손 ONNX→DX-COM 결과가 흔히 **`Identity` [1,63] 랜드마크 + `Identity_1`/`Identity_2` 스칼라** 형태이므로, 기본 레이아웃은 `landmarks_tensor_index: 0` 과 `outputs.coordinate_space: "letterbox_patch_pixels"`(224 패치 픽셀→원본 RGB 정규화 역변환)을 씁니다.  
+이미 정규화된 다른 텐서만 쓰는 컴파일본이면 `coordinate_space` 를 `"normalized"` 로 두고 `landmarks_tensor_index` 만 바꾸면 됩니다.
 
 DX-COM용 보정 전처리는 `models/dxcom/hand_landmark_lite.json` (서버 `~/sample` 과 동일 내용)을 사용합니다.
 
@@ -71,7 +75,7 @@ export DX_COM='dx_com --your-flags-here'   # 예시 — 실제 플래그는 DEEP
 
 ## 3) 보드에서 실행
 
-1. [dx_rt](https://github.com/DEEPX-AI/dx_rt) `python_package` 설치 → `from dx_engine import InferenceEngine` 가능  
+1. [dx_rt](https://github.com/DEEPX-AI/dx_rt) **`python_package`를 보드에서 빌드·설치** → `dx_engine` 버전이 설치된 **DX-RT(`libdxrt.so`)와 일치**해야 합니다. 구 pip에서는 `pip install .` 이 실패할 수 있으므로 `requirements-npu.txt` 안내를 따르세요.  
 2. `pip3 install -r requirements-npu.txt` (MediaPipe 없이 실행 가능)  
 3. 예:
 

@@ -54,6 +54,8 @@ python3 main.py --camera 0
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
 요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (로컬 `tools/compile_dxnn.sh` 또는 SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu --dxnn …`.
 
+**`dx_engine`은 반드시 보드의 DX-RT와 맞는 빌드**를 쓰세요. 오래된 wheel만 설치하면 `InferenceEngine`이 멈추거나 힙 오류가 날 수 있습니다. 설치 절차는 `requirements-npu.txt` 주석을 따르면 됩니다.
+
 - 종료: `q`
 - 민감도: `--vy-trigger`, `--joint-dps` (관절 각속도 하한, deg/s), `--cooldown`
 
@@ -75,6 +77,8 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [EXPERIMENTS.md](docs/EXPERIMENTS.md)
+- [Palm+Hand 전부 NPU 로 옮기기 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Palm `.dxnn`·디코드·ROI·통합 단계  
+- [**다음 세션 실험 가이드**](docs/NEXT_SESSION_NPU_PALM.md) — 명령어·체크리스트·완료 기준
 
 ## 구성
 

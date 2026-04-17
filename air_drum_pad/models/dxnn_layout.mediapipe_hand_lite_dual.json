@@ -1,7 +1,7 @@
 {
   "input": {
     "tensor_name": "input_1",
-    "tensor_layout": "nchw",
+    "tensor_layout": "nhwc",
     "color_order": "rgb",
     "square_pad": true,
     "normalize": {
@@ -13,7 +13,8 @@
     "dual_horizontal_halves": true
   },
   "outputs": {
-    "landmarks_tensor_index": 1,
+    "landmarks_tensor_index": 0,
+    "coordinate_space": "letterbox_patch_pixels",
     "points_per_hand": 21,
     "max_hands": 1
   },
@@ -21,7 +22,7 @@
     "mode": "wrist_x_screen"
   },
   "confidence": {
-    "tensor_index": 2,
-    "threshold": 0.5
+    "tensor_index": null,
+    "threshold": 0.25
   }
 }

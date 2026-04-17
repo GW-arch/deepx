@@ -214,11 +214,17 @@ def main() -> int:
     )
 
     try:
+        fail_streak = 0
         while True:
             ok, frame = cap.read()
             if not ok:
+                fail_streak += 1
+                if fail_streak < 30:
+                    time.sleep(0.02)
+                    continue
                 print("Camera read failed", file=sys.stderr)
                 return 1
+            fail_streak = 0
 
             frames += 1
             t = time.perf_counter()

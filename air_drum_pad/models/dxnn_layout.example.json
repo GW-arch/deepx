@@ -17,6 +17,7 @@
   "outputs": {
     "landmarks_tensor_index": 0,
     "layout": "flat_xyZ",
+    "coordinate_space": "normalized",
     "points_per_hand": 21,
     "max_hands": 2
   },
