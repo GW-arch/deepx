@@ -1,0 +1,15 @@
+{
+  "description": "순서: 손0 엄지,검지,중지,약지,소지 → 손1 엄지,검지,중지,약지,소지 (MediaPipe hand 0,1 순)",
+  "slots": [
+    "kick",
+    "snare",
+    "hat",
+    "ride",
+    "tom_l",
+    "tom_m",
+    "hat_o",
+    "crash",
+    "clap",
+    "rim"
+  ]
+}

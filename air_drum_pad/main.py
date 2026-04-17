@@ -16,12 +16,14 @@ import mediapipe as mp
 import numpy as np
 import pygame
 
-from drumkit_audio import build_kit
+from drumkit_audio import build_kit, kit_keys
 from strike_detector import (
     FINGER_ANGLE_CHAIN,
     FINGER_LABELS,
     FINGERTIP_INDICES,
     InstrumentStrikeDetector,
+    load_instrument_slots_json,
+    sound_key_for_finger,
 )
 
 # BGR — 손가락별
@@ -57,6 +59,18 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-hands", type=int, default=2, choices=[1, 2])
     p.add_argument("--model-complexity", type=int, default=0, choices=[0, 1])
     p.add_argument("--trail", type=int, default=24, help="손끝 궤적 길이(프레임)")
+    p.add_argument(
+        "--instruments",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="JSON: 손0·손1 각 5손가락 순으로 sound key 10개 (예: instruments.example.json)",
+    )
+    p.add_argument(
+        "--list-instruments",
+        action="store_true",
+        help="사용 가능한 sound key 목록 출력 후 종료",
+    )
     return p.parse_args()
 
 
@@ -81,13 +95,25 @@ def draw_finger_chain(
 
 def main() -> int:
     args = parse_args()
+    if args.list_instruments:
+        print(" ".join(kit_keys()))
+        return 0
+
     pygame.init()
     kit = build_kit()
+    sound_mapper = None
+    if args.instruments.strip():
+        slots = load_instrument_slots_json(args.instruments.strip())
+        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
+            h, lm, max_hands=mh, sound_slots=s
+        )
+
     det = InstrumentStrikeDetector(
         vy_trigger=args.vy_trigger,
         joint_dps_trigger=args.joint_dps,
         cooldown_s=args.cooldown,
         max_hands=args.max_hands,
+        sound_mapper=sound_mapper,
     )
 
     trails: dict[tuple[int, int], deque[tuple[int, int]]] = defaultdict(

@@ -1,7 +1,9 @@
 """손가락 관절 + 손끝 속도로 타격 판정 (고정 영역 없음, 추적 기반)."""
 from __future__ import annotations
 
+import json
 import math
+from pathlib import Path
 from typing import Any, Callable, Optional
 
 # MediaPipe hand landmarks — fingertip indices
@@ -37,13 +39,55 @@ _DEFAULT_SOUND_BY_SLOT: tuple[str, ...] = (
 )
 
 
-def sound_key_for_finger(hand_id: int, landmark_id: int, max_hands: int = 2) -> str:
+def sound_key_for_finger(
+    hand_id: int,
+    landmark_id: int,
+    *,
+    max_hands: int = 2,
+    sound_slots: Optional[tuple[str, ...]] = None,
+) -> str:
+    """sound_slots: 길이 10 권장 — [손0 엄지…소지, 손1 엄지…소지]. None이면 기본 킥/스네어… 매핑."""
     if landmark_id not in FINGER_LABELS:
-        return _DEFAULT_SOUND_BY_SLOT[0]
+        slots = sound_slots if sound_slots is not None else _DEFAULT_SOUND_BY_SLOT
+        return slots[0]
     fi = FINGERTIP_INDICES.index(landmark_id)
     slot = int(hand_id) * len(FINGERTIP_INDICES) + fi
-    cap = min(max_hands, 2) * len(FINGERTIP_INDICES)
-    return _DEFAULT_SOUND_BY_SLOT[slot % max(cap, 1)]
+    slots = sound_slots if sound_slots is not None else _DEFAULT_SOUND_BY_SLOT
+    nh = min(max(1, max_hands), 2)
+    need = nh * len(FINGERTIP_INDICES)
+    if len(slots) < need:
+        return slots[slot % len(slots)]
+    return slots[slot]
+
+
+def load_instrument_slots_json(path: str) -> tuple[str, ...]:
+    """
+    JSON 형식:
+      { "slots": ["kick","snare", ...] }  또는  ["kick","snare", ...]
+    길이 10(양손×5손가락) 권장. 값은 drumkit_audio에 정의된 sound key여야 함.
+    """
+    from drumkit_audio import kit_keys
+
+    valid = frozenset(kit_keys())
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(path)
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    if isinstance(raw, dict) and "slots" in raw:
+        slots = raw["slots"]
+    elif isinstance(raw, list):
+        slots = raw
+    else:
+        raise ValueError("JSON은 배열이거나 {\"slots\": [...] } 형식이어야 합니다.")
+    if not isinstance(slots, list) or not all(isinstance(x, str) for x in slots):
+        raise ValueError("slots는 문자열 배열이어야 합니다.")
+    bad = [x for x in slots if x not in valid]
+    if bad:
+        raise ValueError(f"알 수 없는 sound key: {bad}. 사용 가능: {sorted(valid)}")
+    need = 10  # 양손 × 5 (max-hands=1이면 앞 5개만 사용)
+    if len(slots) < need:
+        raise ValueError(f"slots는 최소 {need}개(손0 엄지→소지, 손1 엄지→소지 순) 필요합니다.")
+    return tuple(slots)
 
 
 def _angle_deg_at_b(
@@ -89,9 +133,14 @@ class InstrumentStrikeDetector:
         self.cooldown_s = cooldown_s
         self.min_conf = min_conf
         self.max_hands = max_hands
-        self._sound_mapper = sound_mapper or (
-            lambda h, lm: sound_key_for_finger(h, lm, max_hands=max_hands)
-        )
+        if sound_mapper is not None:
+            self._sound_mapper = sound_mapper
+        else:
+
+            def _default_map(h: int, lm: int) -> str:
+                return sound_key_for_finger(h, lm, max_hands=max_hands)
+
+            self._sound_mapper = _default_map
         self._prev_y: dict[tuple[int, int], float] = {}
         self._prev_t: dict[tuple[int, int], float] = {}
         self._prev_angle: dict[tuple[int, int], float] = {}
