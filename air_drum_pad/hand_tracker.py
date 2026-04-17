@@ -72,7 +72,7 @@ class _LandmarkSmoother:
     fast movements (adaptive alpha: fast motion → less smoothing).
     """
 
-    def __init__(self, alpha: float = 0.4, velocity_scale: float = 10.0) -> None:
+    def __init__(self, alpha: float = 0.15, velocity_scale: float = 4.0) -> None:
         self._alpha = alpha
         self._vel_scale = velocity_scale
         # Keyed by hand index (sorted position) → (21, 3) array
@@ -125,9 +125,16 @@ class MediapipeHandTracker:
 
     def process(self, rgb: np.ndarray) -> HandTrackingResult:
         res = self._hands.process(rgb)
+        # MediaPipe assumes mirrored/selfie input → flip labels for raw camera
+        raw_handed = list(res.multi_handedness or [])
+        flipped: list[Any] = []
+        for h in raw_handed:
+            c = h.classification[0]
+            new_label = "Right" if c.label == "Left" else "Left"
+            flipped.append(_Handedness(new_label, c.score))
         return HandTrackingResult(
             multi_hand_landmarks=list(res.multi_hand_landmarks or []),
-            multi_handedness=list(res.multi_handedness or []),
+            multi_handedness=flipped,
         )
 
     def close(self) -> None:
