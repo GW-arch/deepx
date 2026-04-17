@@ -36,3 +36,4 @@ python3 main.py --camera 0
 ## 원격 저장소
 
 - `git@github.com:GW-arch/deepx.git` (SSH)
+- `sites.google.com/view/dxs-2603-snu` (DEEPX)
