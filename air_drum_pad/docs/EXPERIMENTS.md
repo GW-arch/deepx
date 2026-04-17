@@ -94,10 +94,11 @@
 
 | 조건 | 시간 | 손 수 | 비고 |
 |------|-----:|------:|------|
-| Palm TFLite + Hand .dxnn | ~99 ms | 2 | palm이 병목 (~95 ms) |
+| Palm re-detection 프레임 | ~99 ms | 2 | palm이 병목 (~95 ms) |
+| **트래킹 프레임 (palm skip)** | **~16 ms** | 2 | NPU hand landmark만 실행 |
 | 손 미감지 시 | ~95 ms | 0 | palm detection만 실행 |
 
-> Palm이 CPU 병목이므로, 전체 파이프라인은 ~100 ms/frame (약 10 FPS). `npu` (dual-halves) 백엔드는 ~16 ms/frame로 훨씬 빠르지만 palm 검출 없이 화면 반분할 근사입니다.
+> **Palm skip 최적화**: 이전 프레임 랜드마크에서 다음 ROI를 예측하여 palm detection을 5프레임에 1회만 실행합니다. 트래킹 중에는 NPU hand landmark만 돌리므로 대부분의 프레임에서 ~16ms로 동작합니다. 트래킹 실패 시 자동으로 palm re-detection을 실행합니다.
 
 ---
 

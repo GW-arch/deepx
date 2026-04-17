@@ -624,16 +624,26 @@ class FullNpuHandsTracker:
         self._decode = None  # lazy import
         self._roi_fn = None
 
+        # --- Tracking state: skip palm when previous landmarks are good ---
+        # Each entry: (center_x_px, center_y_px, roi_size_px, rotation_rad)
+        self._prev_rois: list[tuple[float, float, float, float]] = []
+        self._palm_skip_count: int = 0
+        self._PALM_REDETECT_EVERY: int = 5  # force palm every N frames
+
     def _ensure_imports(self) -> None:
         if self._decode is None:
             from palm_decode import decode_palm_tensors
             from palm_roi import (
                 extract_hand_roi,
                 inverse_landmark_transform,
+                palm_detection_to_roi,
+                warp_roi_affine,
             )
             self._decode = decode_palm_tensors
             self._extract_roi = extract_hand_roi
             self._inv_lm = inverse_landmark_transform
+            self._palm_det_to_roi = palm_detection_to_roi
+            self._warp_roi = warp_roi_affine
 
     def _run_palm(self, rgb: np.ndarray):
         """Run palm detection, return (K, 19) detections."""
@@ -662,53 +672,127 @@ class FullNpuHandsTracker:
         )
         return dets
 
+    def _roi_from_landmarks(
+        self, lm21: tuple, iw: int, ih: int,
+    ) -> tuple[float, float, float, float]:
+        """Derive a tracking ROI from 21 landmarks (like MediaPipe's hand_recrop).
+
+        Uses wrist(0) → middle_finger_mcp(9) for rotation,
+        bounding box of all points for size, with MediaPipe-style expansion.
+        """
+        xs = [lm21[i].x * iw for i in range(21)]
+        ys = [lm21[i].y * ih for i in range(21)]
+        # Rotation from wrist to middle finger MCP
+        wx, wy = lm21[0].x * iw, lm21[0].y * ih
+        mx, my = lm21[9].x * iw, lm21[9].y * ih
+        rotation = math.atan2(my - wy, mx - wx) - math.pi / 2.0
+
+        # Bounding box of all landmarks
+        xmin, xmax = min(xs), max(xs)
+        ymin, ymax = min(ys), max(ys)
+        cx = (xmin + xmax) * 0.5
+        cy = (ymin + ymax) * 0.5
+        long_side = max(xmax - xmin, ymax - ymin)
+
+        # Expand like MediaPipe (scale 2.0 — slightly less than palm's 2.6
+        # because landmarks already cover the full hand)
+        roi_size = long_side * 2.0
+        # Shift center slightly towards fingers (up along hand axis)
+        shift_px = roi_size * (-0.1)
+        cx += shift_px * math.sin(rotation)
+        cy -= shift_px * math.cos(rotation)
+        return cx, cy, roi_size, rotation
+
+    def _run_hand_from_roi(
+        self, rgb: np.ndarray, roi: tuple[float, float, float, float],
+        iw: int, ih: int,
+    ) -> tuple[_HandLms | None, tuple[float, float, float, float] | None]:
+        """Run hand landmark on a single ROI. Returns (landmarks, new_roi) or (None, None)."""
+        cx, cy, sz, rot = roi
+        patch = self._warp_roi(rgb, cx, cy, sz, rot, out_size=224)
+        result = self._hand_tracker.process(patch)
+        if not result.multi_hand_landmarks:
+            return None, None
+        hlm = result.multi_hand_landmarks[0]
+        lm_flat = np.array(
+            [[l.x, l.y, l.z] for l in hlm.landmark], dtype=np.float32,
+        )
+        lm_orig = self._inv_lm(lm_flat, cx, cy, sz, rot, iw, ih)
+        lm21 = tuple(
+            _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
+            for j in range(lm_orig.shape[0])
+        )
+        new_roi = self._roi_from_landmarks(lm21, iw, ih)
+        return _HandLms(lm21), new_roi
+
     def process(self, rgb: np.ndarray) -> HandTrackingResult:
         self._ensure_imports()
         ih, iw = rgb.shape[:2]
 
+        # --- Try tracking from previous ROIs (skip palm) ---
+        use_tracking = (
+            len(self._prev_rois) > 0
+            and self._palm_skip_count < self._PALM_REDETECT_EVERY
+        )
+
+        if use_tracking:
+            lms_list: list[_HandLms] = []
+            new_rois: list[tuple[float, float, float, float]] = []
+            for roi in self._prev_rois:
+                hlm, nroi = self._run_hand_from_roi(rgb, roi, iw, ih)
+                if hlm is not None:
+                    lms_list.append(hlm)
+                    new_rois.append(nroi)
+
+            if lms_list:
+                self._prev_rois = new_rois
+                self._palm_skip_count += 1
+                return self._finalize(lms_list)
+
+            # Tracking lost — fall through to palm detection
+            self._prev_rois.clear()
+
+        # --- Full palm detection ---
+        self._palm_skip_count = 0
         dets = self._run_palm(rgb)
         if dets.shape[0] == 0:
+            self._prev_rois.clear()
             return HandTrackingResult([], [])
 
         # Sort by score descending, take top max_hands
         order = np.argsort(-dets[:, 0])
         dets = dets[order[: self._max_hands]]
 
-        lms_list: list[_HandLms] = []
-        handed: list[_Handedness] = []
-
+        lms_list = []
+        new_rois = []
         for det in dets:
-            # Extract ROI and warp
             patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
-
-            # Run hand landmark on the warped patch
-            patch_rgb = patch  # already RGB
-            result = self._hand_tracker.process(patch_rgb)
-
+            result = self._hand_tracker.process(patch)
             if not result.multi_hand_landmarks:
                 continue
-
             hlm = result.multi_hand_landmarks[0]
-
-            # Map landmarks back to original image coordinates
             lm_flat = np.array(
                 [[l.x, l.y, l.z] for l in hlm.landmark], dtype=np.float32,
             )
             lm_orig = self._inv_lm(lm_flat, cx, cy, sz, rot, iw, ih)
-
             lm21 = tuple(
                 _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
                 for j in range(lm_orig.shape[0])
             )
             lms_list.append(_HandLms(lm21))
+            new_rois.append(self._roi_from_landmarks(lm21, iw, ih))
 
-            # Handedness from wrist x
-            wx = lm21[0].x
+        self._prev_rois = new_rois
+        return self._finalize(lms_list)
+
+    def _finalize(self, lms_list: list[_HandLms]) -> HandTrackingResult:
+        """Assign handedness and sort left-to-right."""
+        handed: list[_Handedness] = []
+        for hlm in lms_list:
+            wx = hlm.landmark[0].x
             lab = "Left" if wx < 0.5 else "Right"
-            sc = float(det[0])
-            handed.append(_Handedness(lab, sc))
+            handed.append(_Handedness(lab, 1.0))
 
-        # Sort left-to-right
         if len(lms_list) >= 2:
             pairs = list(zip(lms_list, handed))
             pairs.sort(key=lambda p: p[0].landmark[0].x)

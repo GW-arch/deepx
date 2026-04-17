@@ -59,6 +59,8 @@
 | Palm Detection | 192×192 NHWC float32 | CPU (TFLite) | 없음 (float32) | INT8 score head 파괴 |
 | Hand Landmark | 224×224 NHWC uint8 | **NPU** (.dxnn) | INT8 PTQ | 정상 동작 |
 
+**Palm Skip (트래킹 최적화):** MediaPipe와 동일하게, 이전 프레임의 랜드마크로 다음 ROI를 예측하여 palm detection을 매 프레임 실행하지 않습니다. 5프레임에 1회만 palm을 재실행하고, 트래킹 실패 시 즉시 re-detection합니다. 이로써 `npu-full` 모드의 평균 프레임 시간이 ~111ms → ~16ms로 개선됩니다.
+
 ---
 
 ## 6. 타격 로직 (`InstrumentStrikeDetector`)

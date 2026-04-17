@@ -83,10 +83,10 @@ python3 main.py --backend npu --piano --camera 0 \
 | 구성 | Palm 추론 | Hand 추론 (per hand) | 전체 (2 hands) | 비고 |
 |------|----------:|---------------------:|---------------:|------|
 | `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | 모두 float32 |
-| `npu-full` (TFLite palm + NPU hand) | ~95 ms | ~8 ms | ~111 ms | palm이 병목 |
+| `npu-full` (TFLite palm + NPU hand) | ~95 ms (첫 프레임) | ~8 ms | **~16 ms** (트래킹 시) | palm skip으로 대부분 ~16ms |
 | `npu` (dual-halves) | 0 ms | ~8 ms × 2 | ~16 ms | palm 검출 없음, 근사 |
 
-> `npu-full`은 palm detection CPU 오버헤드가 크지만, 정식 ROI 기반 추적이므로 정확도가 높습니다. `npu`는 가장 빠르지만 palm 검출 없이 화면을 반으로 나누는 근사입니다.
+> **npu-full 트래킹 최적화**: MediaPipe와 동일하게, 이전 프레임 랜드마크에서 ROI를 예측하여 palm detection을 5프레임에 1번만 실행합니다. 트래킹 중에는 NPU hand landmark만 돌리므로 ~16ms/frame (2 hands)로 동작합니다. 손을 잃으면 자동으로 palm re-detection을 실행합니다.
 
 #### npu-full 사용 예시
 

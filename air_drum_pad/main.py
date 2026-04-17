@@ -240,23 +240,45 @@ def main() -> int:
     cv2.namedWindow(title, cv2.WINDOW_NORMAL)
     cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-    # --- Key-mapping overlay thumbnail ---
+    # --- Detect screen size for layout ---
+    # Canvas = full screen.  Layout: [video | sidebar]
+    # sidebar is ~25% width for mapping + feedback.
+    screen_w, screen_h = 1920, 1080  # fallback
+    try:
+        import subprocess as _sp
+        _xr = _sp.check_output(
+            ["xrandr"], env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+            stderr=_sp.DEVNULL, timeout=2,
+        ).decode()
+        for _line in _xr.splitlines():
+            if "*" in _line:
+                _res = _line.split()[0]
+                screen_w, screen_h = (int(x) for x in _res.split("x"))
+                break
+    except Exception:
+        pass
+    SIDEBAR_W = max(320, screen_w // 4)
+    VIDEO_W = screen_w - SIDEBAR_W
+    VIDEO_H = screen_h
+    SIDEBAR_BG = (30, 30, 30)
+
+    # --- Key-mapping image for sidebar ---
     mapping_img_path = (
         _SCRIPT_DIR / "instruments" / ("piano_default.png" if args.piano else "drum_default.png")
     )
-    mapping_thumb: np.ndarray | None = None
+    mapping_sidebar: np.ndarray | None = None
     if mapping_img_path.is_file():
-        _raw = cv2.imread(str(mapping_img_path), cv2.IMREAD_UNCHANGED)
+        _raw = cv2.imread(str(mapping_img_path), cv2.IMREAD_COLOR)
         if _raw is not None:
-            # Resize to ~20% of capture width, keep aspect ratio
-            thumb_w = max(160, args.width // 5)
-            scale = thumb_w / _raw.shape[1]
-            thumb_h = int(_raw.shape[0] * scale)
-            mapping_thumb = cv2.resize(_raw, (thumb_w, thumb_h), interpolation=cv2.INTER_AREA)
+            # Scale to fit sidebar width with padding
+            _fit_w = SIDEBAR_W - 20
+            _scale = _fit_w / _raw.shape[1]
+            _fit_h = int(_raw.shape[0] * _scale)
+            mapping_sidebar = cv2.resize(_raw, (_fit_w, _fit_h), interpolation=cv2.INTER_AREA)
 
     # --- Strike feedback state: list of (expire_time, text, color) ---
     strike_events: list[tuple[float, str, tuple[int, int, int]]] = []
-    STRIKE_DISPLAY_SEC = 0.6
+    STRIKE_DISPLAY_SEC = 0.8
 
     try:
         fail_streak = 0
@@ -386,35 +408,43 @@ def main() -> int:
                     cv2.LINE_AA,
                 )
 
-            # --- Draw key-mapping thumbnail (top-right) ---
-            if mapping_thumb is not None:
-                th, tw = mapping_thumb.shape[:2]
-                x_off = frame.shape[1] - tw - 8
-                y_off = 8
-                roi = frame[y_off : y_off + th, x_off : x_off + tw]
-                if mapping_thumb.shape[2] == 4:
-                    alpha = mapping_thumb[:, :, 3:4].astype(np.float32) / 255.0
-                    bgr = mapping_thumb[:, :, :3]
-                    blended = (bgr.astype(np.float32) * alpha + roi.astype(np.float32) * (1 - alpha))
-                    frame[y_off : y_off + th, x_off : x_off + tw] = blended.astype(np.uint8)
-                else:
-                    alpha_val = 0.7
-                    cv2.addWeighted(mapping_thumb[:, :, :3], alpha_val, roi, 1 - alpha_val, 0, roi)
+            # --- Compose full-screen canvas: [scaled video | sidebar] ---
+            vid_scaled = cv2.resize(frame, (VIDEO_W, VIDEO_H), interpolation=cv2.INTER_LINEAR)
 
-            # --- Draw strike feedback (bottom-right, stacked) ---
+            sidebar = np.full((screen_h, SIDEBAR_W, 3), SIDEBAR_BG, dtype=np.uint8)
+
+            # Sidebar title
+            _stitle = "Piano" if args.piano else "Drum Kit"
+            cv2.putText(sidebar, _stitle, (10, 36),
+                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
+            cv2.line(sidebar, (10, 48), (SIDEBAR_W - 10, 48), (80, 80, 80), 1)
+
+            # Key-mapping image
+            _sidebar_y = 60
+            if mapping_sidebar is not None:
+                mh, mw = mapping_sidebar.shape[:2]
+                x_pad = (SIDEBAR_W - mw) // 2
+                sidebar[_sidebar_y : _sidebar_y + mh, x_pad : x_pad + mw] = mapping_sidebar
+                _sidebar_y += mh + 16
+
+            # Divider before strikes
+            cv2.line(sidebar, (10, _sidebar_y), (SIDEBAR_W - 10, _sidebar_y), (80, 80, 80), 1)
+            _sidebar_y += 8
+            cv2.putText(sidebar, "Strikes", (10, _sidebar_y + 20),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1, cv2.LINE_AA)
+            _sidebar_y += 36
+
+            # Strike feedback list
             strike_events = [(exp, txt, col) for exp, txt, col in strike_events if exp > t]
-            for i, (_, txt, col) in enumerate(strike_events[-5:]):
-                y_pos = frame.shape[0] - 20 - i * 36
-                cv2.putText(
-                    frame, txt, (frame.shape[1] - 340, y_pos),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 0, 0), 4, cv2.LINE_AA,
-                )
-                cv2.putText(
-                    frame, txt, (frame.shape[1] - 340, y_pos),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, col, 2, cv2.LINE_AA,
-                )
+            for i, (_, txt, col) in enumerate(strike_events[-8:]):
+                y_pos = _sidebar_y + i * 34
+                if y_pos + 30 > screen_h:
+                    break
+                cv2.putText(sidebar, txt, (14, y_pos + 22),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, col, 2, cv2.LINE_AA)
 
-            cv2.imshow(title, frame)
+            canvas = np.hstack((vid_scaled, sidebar))
+            cv2.imshow(title, canvas)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
