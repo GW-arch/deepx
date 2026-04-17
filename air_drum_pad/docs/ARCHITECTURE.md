@@ -3,7 +3,7 @@
 **프로젝트명:** NPU 기반 초저지연 Hand Landmark Tracking을 활용한 AI Air-Drum Pad  
 **문서 버전:** 1.0  
 **대상 플랫폼:** DeepX M1 키트(Ubuntu 22.04, SBC + NPU + USB 카메라 + 디스플레이)  
-**참고 구현:** 이 모노레포 [`GW-arch/deepx`](https://github.com/GW-arch/deepx) 의 `air_drum_pad/` Python 프로토타입(CPU/MediaPipe)
+**참고 구현:** 이 모노레포 `git@github.com:GW-arch/deepx.git` ([웹](https://github.com/GW-arch/deepx)) 의 `air_drum_pad/` Python 프로토타입(CPU/MediaPipe)
 
 ---
 

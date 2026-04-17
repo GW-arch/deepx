@@ -1,10 +1,13 @@
 # AI Air-Drum Pad (prototype)
 
-**관리 저장소:** [github.com/GW-arch/deepx](https://github.com/GW-arch/deepx) — 이 프로젝트는 항상 해당 레포 안에서 버전 관리합니다.
+**관리 저장소 (SSH):** `git@github.com:GW-arch/deepx.git` — 이 디렉터리는 위 레포의 `air_drum_pad/` 로만 관리합니다.  
+웹: [github.com/GW-arch/deepx](https://github.com/GW-arch/deepx)
 
 ## 실행
 
 ```bash
+# 레포 루트에서
+cd air_drum_pad
 pip3 install -r requirements.txt
 python3 main.py --camera 0
 ```

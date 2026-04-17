@@ -1,7 +1,7 @@
 # AI Air-Drum Pad — 실험 방법서
 
 **문서 버전:** 1.0  
-**저장소:** [github.com/GW-arch/deepx](https://github.com/GW-arch/deepx)
+**저장소 (Git SSH):** `git@github.com:GW-arch/deepx.git` · [웹](https://github.com/GW-arch/deepx)
 
 ---
 
