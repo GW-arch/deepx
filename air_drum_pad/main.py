@@ -371,5 +371,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-Also: the palm .dxnn recompilation with hand-specific calibration data just finished successfully and was downloaded to palm_detection_lite.dxnn. Want me to test the new .dxnn quality next?
 
