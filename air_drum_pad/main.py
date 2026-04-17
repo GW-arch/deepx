@@ -64,13 +64,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--vy-trigger",
         type=float,
-        default=0.01,
+        default=0.04,
         help="손끝 하강 속도(정규화 좌표/s) 하한",
     )
     p.add_argument(
         "--joint-dps",
         type=float,
-        default=120.0,
+        default=250.0,
         help="관절 각속도(|deg/s|) 하한 — 손가락 관절이 실제로 움직일 때",
     )
     p.add_argument("--cooldown", type=float, default=0.12, help="같은 손가락 연타 쿨다운(초)")
@@ -235,6 +235,29 @@ def main() -> int:
         flush=True,
     )
 
+    # --- Fullscreen window ---
+    title = "AI Air-Drum (piano)" if args.piano else "AI Air-Drum (drum)"
+    cv2.namedWindow(title, cv2.WINDOW_NORMAL)
+    cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+
+    # --- Key-mapping overlay thumbnail ---
+    mapping_img_path = (
+        _SCRIPT_DIR / "instruments" / ("piano_default.png" if args.piano else "drum_default.png")
+    )
+    mapping_thumb: np.ndarray | None = None
+    if mapping_img_path.is_file():
+        _raw = cv2.imread(str(mapping_img_path), cv2.IMREAD_UNCHANGED)
+        if _raw is not None:
+            # Resize to ~20% of capture width, keep aspect ratio
+            thumb_w = max(160, args.width // 5)
+            scale = thumb_w / _raw.shape[1]
+            thumb_h = int(_raw.shape[0] * scale)
+            mapping_thumb = cv2.resize(_raw, (thumb_w, thumb_h), interpolation=cv2.INTER_AREA)
+
+    # --- Strike feedback state: list of (expire_time, text, color) ---
+    strike_events: list[tuple[float, str, tuple[int, int, int]]] = []
+    STRIKE_DISPLAY_SEC = 0.6
+
     try:
         fail_streak = 0
         while True:
@@ -318,6 +341,13 @@ def main() -> int:
                         _, sk = hit
                         if sk in kit:
                             kit[sk].play()
+                        # Record for on-screen feedback
+                        fn = FINGER_LABELS.get(fid, "?")
+                        side = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
+                        strike_events.append(
+                            (t + STRIKE_DISPLAY_SEC, f"{side}:{fn} -> {sk}",
+                             FINGER_COLORS.get(fid, (200, 200, 200)))
+                        )
 
                     lm = hand_lms.landmark[fid]
                     px = int(lm.x * frame.shape[1])
@@ -356,7 +386,34 @@ def main() -> int:
                     cv2.LINE_AA,
                 )
 
-            title = "AI Air-Drum (piano)" if args.piano else "AI Air-Drum (drum)"
+            # --- Draw key-mapping thumbnail (top-right) ---
+            if mapping_thumb is not None:
+                th, tw = mapping_thumb.shape[:2]
+                x_off = frame.shape[1] - tw - 8
+                y_off = 8
+                roi = frame[y_off : y_off + th, x_off : x_off + tw]
+                if mapping_thumb.shape[2] == 4:
+                    alpha = mapping_thumb[:, :, 3:4].astype(np.float32) / 255.0
+                    bgr = mapping_thumb[:, :, :3]
+                    blended = (bgr.astype(np.float32) * alpha + roi.astype(np.float32) * (1 - alpha))
+                    frame[y_off : y_off + th, x_off : x_off + tw] = blended.astype(np.uint8)
+                else:
+                    alpha_val = 0.7
+                    cv2.addWeighted(mapping_thumb[:, :, :3], alpha_val, roi, 1 - alpha_val, 0, roi)
+
+            # --- Draw strike feedback (bottom-right, stacked) ---
+            strike_events = [(exp, txt, col) for exp, txt, col in strike_events if exp > t]
+            for i, (_, txt, col) in enumerate(strike_events[-5:]):
+                y_pos = frame.shape[0] - 20 - i * 36
+                cv2.putText(
+                    frame, txt, (frame.shape[1] - 340, y_pos),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, (0, 0, 0), 4, cv2.LINE_AA,
+                )
+                cv2.putText(
+                    frame, txt, (frame.shape[1] - 340, y_pos),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.85, col, 2, cv2.LINE_AA,
+                )
+
             cv2.imshow(title, frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
