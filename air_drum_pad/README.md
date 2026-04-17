@@ -52,7 +52,7 @@ python3 main.py --camera 0
 | `npu` | DX-RT `.dxnn` + `dx_engine` (레이아웃 JSON) |
 
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
-요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (`tools/compile_dxnn.sh`) → 보드에서 `--backend npu --dxnn …`.
+요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (로컬 `tools/compile_dxnn.sh` 또는 SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu --dxnn …`.
 
 - 종료: `q`
 - 민감도: `--vy-trigger`, `--joint-dps` (관절 각속도 하한, deg/s), `--cooldown`

@@ -1,0 +1,18 @@
+{
+  "inputs": {
+    "input_1": [1, 3, 224, 224]
+  },
+  "calibration_num": 50,
+  "calibration_method": "ema",
+  "default_loader": {
+    "dataset_path": "/home/dxs/dx_com_M1_v2.1.0-rc.4/calibration_dataset",
+    "file_extensions": ["jpeg", "jpg", "png", "JPEG"],
+    "preprocessings": [
+      { "convertColor": { "form": "BGR2RGB" } },
+      { "resize": { "width": 224, "height": 224 } },
+      { "div": { "x": 255.0 } },
+      { "transpose": { "axis": [2, 0, 1] } },
+      { "expandDim": { "axis": 0 } }
+    ]
+  }
+}

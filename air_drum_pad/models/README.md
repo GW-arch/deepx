@@ -28,6 +28,32 @@ python3 tools/export_mediapipe_hand_onnx.py --variant lite --dual-halves-layout
 
 ## 2) DX-COM으로 `.dxnn` (호스트 또는 크로스 컴파일 환경)
 
+### SNU 실습 컴파일 서버 (강의 환경)
+
+[실습5 문서 (DX-AS NPU 컴파일)](https://sites.google.com/view/dxs-2603-snu/home/%EC%8B%A4%EC%8A%B55-dx-as-npu-%EC%BB%B4%ED%8C%8C%EC%9D%BC-%EB%B0%8F-%EC%B6%94%EB%A1%A0-%EC%8B%A4%EC%8A%B5) 기준:
+
+| 항목 | 값 |
+|------|-----|
+| SSH | `ssh -p 443 <userN>@43.203.143.33` |
+| SCP | `scp -P 443 …` (대문자 **P**) |
+| 샘플 ONNX/JSON | 서버 `~/sample/` |
+| 컴파일 결과 | 서버 `~/output/*.dxnn` |
+| 컴파일 명령 | `taskset -c N,N+1 dx_com -m <onnx> -c <json> -o ~/output` — **userN 이면 N,N+1** (예: user12 → `taskset -c 12,13`) |
+
+교육키트(Orange Pi)에서 한 번에 올리고 받기:
+
+```bash
+cd air_drum_pad
+export DX_COMPILE_USER=user12
+# 권장: ssh-copy-id 로 공개키 등록 후 비밀번호 없이 접속
+# 또는: echo '비밀번호한줄' > ~/.snupass && chmod 600 ~/.snupass && export DX_COMPILE_PASSFILE=~/.snupass
+./tools/compile_server_snu.sh all
+```
+
+레이아웃 JSON(`models/dxnn_layout.mediapipe_hand_lite*.json`)은 **컴파일된 `.dxnn`의 출력 텐서 순서**에 맞춰져 있습니다(`parse_model -m …` 로 확인). 손 위치가 이상하면 `outputs.landmarks_tensor_index` 를 0↔1 로 바꿔 보세요.
+
+DX-COM용 보정 전처리는 `models/dxcom/hand_landmark_lite.json` (서버 `~/sample` 과 동일 내용)을 사용합니다.
+
 ### aarch64 보드(Orange Pi 등)
 
 `~/dx-all-suite/dx-compiler/install.sh` 기준 **DX-COM(dxcom) 공식 설치는 amd64 / x86_64만 지원**합니다.  

@@ -13,7 +13,7 @@
     "dual_horizontal_halves": false
   },
   "outputs": {
-    "landmarks_tensor_index": 0,
+    "landmarks_tensor_index": 1,
     "points_per_hand": 21,
     "max_hands": 1
   },
@@ -21,7 +21,7 @@
     "mode": "wrist_x_screen"
   },
   "confidence": {
-    "tensor_index": 1,
+    "tensor_index": 2,
     "threshold": 0.5
   }
 }

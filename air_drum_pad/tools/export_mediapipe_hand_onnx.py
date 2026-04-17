@@ -79,6 +79,14 @@ def write_layout(
         else:
             shape.append(-1 if not d.dim_param else str(d.dim_param))
 
+    # DX-COM 으로 컴파일한 .dxnn 은 입력이 UINT8 NHWC 로 바뀌고, 출력 순서가 ONNX 와 달라질 수 있음.
+    # M1 + dx_com 2.1.0-rc.4 기준(run_model): Identity_3, Identity, Identity_1, Identity_2 …
+    # MediaPipe 손 ONNX(존재 점수 있음)를 컴파일한 경우: 랜드마크=Identity → index 1, 존재=Identity_1 → index 2.
+    if confidence_index is not None:
+        lm_idx, conf_idx = 1, 2
+    else:
+        lm_idx, conf_idx = 0, None
+
     layout: dict = {
         "input": {
             "tensor_name": name,
@@ -89,15 +97,16 @@ def write_layout(
         },
         "inference": {"dual_horizontal_halves": dual_halves},
         "outputs": {
-            "landmarks_tensor_index": 0,
+            "landmarks_tensor_index": lm_idx,
             "points_per_hand": 21,
             "max_hands": 1,
         },
         "handedness": {"mode": "wrist_x_screen"},
-        "confidence": {
-            "tensor_index": confidence_index,
-            "threshold": confidence_threshold,
-        },
+        "confidence": (
+            {"tensor_index": conf_idx, "threshold": confidence_threshold}
+            if conf_idx is not None
+            else {"tensor_index": None, "threshold": confidence_threshold}
+        ),
     }
     if len(shape) == 4 and (-1 in shape or any(isinstance(x, str) for x in shape)):
         # leave height/width from model if fixed; else user must fill
