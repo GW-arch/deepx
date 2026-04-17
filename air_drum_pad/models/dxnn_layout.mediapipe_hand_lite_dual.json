@@ -1,0 +1,27 @@
+{
+  "input": {
+    "tensor_name": "input_1",
+    "tensor_layout": "nchw",
+    "color_order": "rgb",
+    "square_pad": true,
+    "normalize": {
+      "mode": "scale_255",
+      "dtype": "float32"
+    }
+  },
+  "inference": {
+    "dual_horizontal_halves": true
+  },
+  "outputs": {
+    "landmarks_tensor_index": 0,
+    "points_per_hand": 21,
+    "max_hands": 1
+  },
+  "handedness": {
+    "mode": "wrist_x_screen"
+  },
+  "confidence": {
+    "tensor_index": 1,
+    "threshold": 0.5
+  }
+}

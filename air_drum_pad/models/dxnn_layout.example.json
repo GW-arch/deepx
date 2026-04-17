@@ -1,0 +1,30 @@
+{
+  "input": {
+    "color_order": "rgb",
+    "tensor_layout": "auto",
+    "tensor_name": null,
+    "square_pad": false,
+    "height": null,
+    "width": null,
+    "normalize": {
+      "mode": "scale_255",
+      "dtype": "float32"
+    }
+  },
+  "inference": {
+    "dual_horizontal_halves": false
+  },
+  "outputs": {
+    "landmarks_tensor_index": 0,
+    "layout": "flat_xyZ",
+    "points_per_hand": 21,
+    "max_hands": 2
+  },
+  "handedness": {
+    "mode": "wrist_x_screen"
+  },
+  "confidence": {
+    "tensor_index": null,
+    "threshold": 0.25
+  }
+}

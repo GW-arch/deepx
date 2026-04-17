@@ -2,7 +2,7 @@
 """
 AI Air-Drum Pad — 손가락 관절·손끝 추적으로 실제 악기를 치는 것처럼 타격 감지.
 
-DeepX M1: MediaPipe 자리에 DX-RT Hand 모델만 교체하면 됨 (동일 strike_detector 입력).
+DeepX M1: MediaPipe TFLite → ONNX(`tools/export_mediapipe_hand_onnx.py`) → DX-COM `.dxnn` → `--backend npu`(동일 strike_detector 입력).
 """
 from __future__ import annotations
 
@@ -10,10 +10,10 @@ import argparse
 import math
 import sys
 import time
+from pathlib import Path
 from collections import defaultdict, deque
 
 import cv2
-import mediapipe as mp
 import numpy as np
 import pygame
 
@@ -28,6 +28,7 @@ from drumkit_audio import (
     piano_slots_from_inter_hand_distance,
     wide_piano_prerender_names,
 )
+from hand_tracker import create_tracker
 from strike_detector import (
     FINGER_ANGLE_CHAIN,
     FINGER_LABELS,
@@ -86,6 +87,27 @@ def parse_args() -> argparse.Namespace:
         "--piano",
         action="store_true",
         help="피아노 모드: 음명(C4 등) 합성음. --instruments 없으면 양손 손목 거리로 음역 자동",
+    )
+    p.add_argument(
+        "--backend",
+        type=str,
+        default="cpu",
+        choices=("cpu", "npu"),
+        help="손 추론: cpu=MediaPipe, npu=DX-RT .dxnn (--dxnn 필수)",
+    )
+    p.add_argument(
+        "--dxnn",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="NPU 백엔드일 때 컴파일된 .dxnn 모델 경로",
+    )
+    p.add_argument(
+        "--dxnn-layout",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="입출력 레이아웃 JSON (예: models/dxnn_layout.example.json)",
     )
     return p.parse_args()
 
@@ -172,19 +194,22 @@ def main() -> int:
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
     cap.set(cv2.CAP_PROP_FPS, 60)
 
-    hands = mp.solutions.hands.Hands(
-        static_image_mode=False,
-        max_num_hands=args.max_hands,
+    tracker = create_tracker(
+        args.backend,
+        max_hands=args.max_hands,
         model_complexity=args.model_complexity,
-        min_detection_confidence=0.65,
-        min_tracking_confidence=0.5,
+        dxnn_path=args.dxnn,
+        dxnn_layout=args.dxnn_layout if args.dxnn_layout.strip() else None,
     )
 
     fps_t0 = time.perf_counter()
     frames = 0
     mode = "piano" if args.piano else "drum"
+    be = f"{args.backend.upper()}"
+    if args.backend == "npu" and args.dxnn.strip():
+        be = f"NPU:{Path(args.dxnn).name}"
     print(
-        f"Air-Drum [{mode}]: q=quit | tip↓ + joint motion → hit | (손,손가락)→음",
+        f"Air-Drum [{mode}] backend={be}: q=quit | tip↓ + joint motion → hit | (손,손가락)→음",
         flush=True,
     )
 
@@ -198,7 +223,7 @@ def main() -> int:
             frames += 1
             t = time.perf_counter()
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            res = hands.process(rgb)
+            res = tracker.process(rgb)
 
             landmarks_list = res.multi_hand_landmarks or []
             handedness_list = res.multi_handedness or []
@@ -294,7 +319,7 @@ def main() -> int:
                 fps = frames / max(elapsed, 1e-6)
                 cv2.putText(
                     frame,
-                    f"FPS ~{fps:.1f}  vy>={args.vy_trigger} |joint|>={args.joint_dps:.0f}deg/s",
+                    f"FPS ~{fps:.1f} [{args.backend}]  vy>={args.vy_trigger} |joint|>={args.joint_dps:.0f}deg/s",
                     (8, 24),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
@@ -310,7 +335,7 @@ def main() -> int:
     finally:
         cap.release()
         cv2.destroyAllWindows()
-        hands.close()
+        tracker.close()
         pygame.quit()
 
     return 0

@@ -44,6 +44,16 @@ python3 main.py --camera 0
 # python3 main.py --piano --camera 0
 ```
 
+### CPU vs NPU (손 추론)
+
+| `--backend` | 설명 |
+|-------------|------|
+| `cpu` (기본) | MediaPipe Hands |
+| `npu` | DX-RT `.dxnn` + `dx_engine` (레이아웃 JSON) |
+
+NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
+요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (`tools/compile_dxnn.sh`) → 보드에서 `--backend npu --dxnn …`.
+
 - 종료: `q`
 - 민감도: `--vy-trigger`, `--joint-dps` (관절 각속도 하한, deg/s), `--cooldown`
 
@@ -58,8 +68,9 @@ python3 main.py --camera 0
 
 | 파일 | 역할 |
 |------|------|
-| `main.py` | 카메라, MediaPipe Hands, 관절선·손끝 궤적 표시 |
+| `main.py` | 카메라, 손 추적(`--backend`), 관절선·손끝 궤적 표시 |
+| `hand_tracker.py` | CPU(MediaPipe) / NPU(DX-RT `.dxnn`) 랜드마크 |
 | `strike_detector.py` | `InstrumentStrikeDetector` — 손끝 속도 + 관절 각속도 |
 | `drumkit_audio.py` | 16종 합성 샘플, 손가락 슬롯에 매핑 |
-
-DeepX M1에서는 MediaPipe 대신 DX-RT + Hand ONNX(.dxnn)로 랜드마크만 넣어 주면 동일 로직을 쓸 수 있습니다.
+| `tools/export_mediapipe_hand_onnx.py` | 공개 TFLite → ONNX + 레이아웃 생성 |
+| `tools/compile_dxnn.sh` | DX-COM 호출 래퍼 (`DX_COM` 환경변수 지원) |

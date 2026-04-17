@@ -1,0 +1,5 @@
+# NPU 실행 보드용: MediaPipe 없이 OpenCV + pygame + numpy 만 설치 가능
+# DX-RT Python(dx_engine)은 PyPI가 아니라 DEEPX dx_rt 저장소의 python_package 를 빌드해 설치합니다.
+opencv-python>=4.8
+pygame>=2.5
+numpy>=1.26,<2.1

@@ -1,0 +1,4 @@
+# 호스트에서: MediaPipe TFLite → ONNX 변환 + 검증 (보드 런타임과 별도)
+tflite2onnx>=0.4.0
+onnx>=1.14.0
+onnxruntime>=1.16.0

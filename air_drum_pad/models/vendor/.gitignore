@@ -1,0 +1,4 @@
+# 대용량 바이너리 — 필요 시 로컬/CI에서 tools/export_mediapipe_hand_onnx.py 로 생성
+*.tflite
+*.onnx
+*.dxnn
