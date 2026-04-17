@@ -65,6 +65,44 @@ class HandTracker(Protocol):
     def close(self) -> None: ...
 
 
+class _LandmarkSmoother:
+    """Per-hand EMA (exponential moving average) landmark filter.
+
+    Reduces INT8 quantization jitter from NPU models while preserving
+    fast movements (adaptive alpha: fast motion → less smoothing).
+    """
+
+    def __init__(self, alpha: float = 0.4, velocity_scale: float = 10.0) -> None:
+        self._alpha = alpha
+        self._vel_scale = velocity_scale
+        # Keyed by hand index (sorted position) → (21, 3) array
+        self._prev: dict[int, np.ndarray] = {}
+
+    def smooth(self, hand_idx: int, lm21: tuple) -> tuple:
+        """Apply EMA to a tuple of 21 _Lm, return smoothed tuple."""
+        cur = np.array([[l.x, l.y, l.z] for l in lm21], dtype=np.float64)
+        prev = self._prev.get(hand_idx)
+        if prev is None:
+            self._prev[hand_idx] = cur.copy()
+            return lm21
+
+        # Adaptive alpha: increase alpha (less smoothing) when moving fast
+        delta = np.abs(cur[:, :2] - prev[:, :2])
+        speed = np.mean(delta)
+        # alpha ranges from self._alpha (still) to ~1.0 (fast movement)
+        a = min(1.0, self._alpha + speed * self._vel_scale)
+
+        smoothed = prev + a * (cur - prev)
+        self._prev[hand_idx] = smoothed.copy()
+        return tuple(
+            _Lm(float(smoothed[j, 0]), float(smoothed[j, 1]), float(smoothed[j, 2]))
+            for j in range(smoothed.shape[0])
+        )
+
+    def clear(self) -> None:
+        self._prev.clear()
+
+
 # --- CPU: MediaPipe ---
 
 
@@ -367,8 +405,8 @@ class DxnnHandTracker:
             left = rgb[:, : w // 2]
             right = rgb[:, w // 2 :]
             parts: list[tuple[str, HandTrackingResult]] = []
-            parts.append(("Left", self._infer_region(left, x_scale=0.5, x_bias=0.0)))
-            parts.append(("Right", self._infer_region(right, x_scale=0.5, x_bias=0.5)))
+            parts.append(("Right", self._infer_region(left, x_scale=0.5, x_bias=0.0)))
+            parts.append(("Left", self._infer_region(right, x_scale=0.5, x_bias=0.5)))
             lms: list[_HandLms] = []
             hnd: list[_Handedness] = []
             for lab, sub in parts:
@@ -514,9 +552,9 @@ class DxnnHandTracker:
             for si, (orig_hi, hlm) in enumerate(hands_work):
                 if len(hands_work) == 1:
                     x0 = hlm.landmark[0].x
-                    lab = "Left" if x0 < 0.5 else "Right"
+                    lab = "Right" if x0 < 0.5 else "Left"
                 else:
-                    lab = "Left" if si == 0 else "Right"
+                    lab = "Right" if si == 0 else "Left"
                 sc = (
                     float(scores[orig_hi])
                     if scores is not None and orig_hi < scores.size
@@ -527,7 +565,7 @@ class DxnnHandTracker:
         else:
             for orig_hi, hlm in hands_work:
                 x0 = hlm.landmark[0].x
-                lab = "Left" if x0 < 0.5 else "Right"
+                lab = "Right" if x0 < 0.5 else "Left"
                 sc = (
                     float(scores[orig_hi])
                     if scores is not None and orig_hi < scores.size
@@ -629,6 +667,7 @@ class FullNpuHandsTracker:
         self._prev_rois: list[tuple[float, float, float, float]] = []
         self._palm_skip_count: int = 0
         self._PALM_REDETECT_EVERY: int = 5  # force palm every N frames
+        self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
 
     def _ensure_imports(self) -> None:
         if self._decode is None:
@@ -786,11 +825,11 @@ class FullNpuHandsTracker:
         return self._finalize(lms_list)
 
     def _finalize(self, lms_list: list[_HandLms]) -> HandTrackingResult:
-        """Assign handedness and sort left-to-right."""
+        """Assign handedness, sort left-to-right, apply EMA smoothing."""
         handed: list[_Handedness] = []
         for hlm in lms_list:
             wx = hlm.landmark[0].x
-            lab = "Left" if wx < 0.5 else "Right"
+            lab = "Right" if wx < 0.5 else "Left"
             handed.append(_Handedness(lab, 1.0))
 
         if len(lms_list) >= 2:
@@ -799,8 +838,13 @@ class FullNpuHandsTracker:
             lms_list = [p[0] for p in pairs]
             handed = [p[1] for p in pairs]
             if len(pairs) >= 2:
-                handed[0] = _Handedness("Left", handed[0].classification[0].score)
-                handed[1] = _Handedness("Right", handed[1].classification[0].score)
+                handed[0] = _Handedness("Right", handed[0].classification[0].score)
+                handed[1] = _Handedness("Left", handed[1].classification[0].score)
+
+        # Apply EMA smoothing to reduce NPU INT8 jitter
+        for i, hlm in enumerate(lms_list):
+            smoothed = self._smoother.smooth(i, hlm.landmark)
+            lms_list[i] = _HandLms(smoothed)
 
         return HandTrackingResult(lms_list, handed)
 
