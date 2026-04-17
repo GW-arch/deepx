@@ -64,6 +64,97 @@
 
 ---
 
-## 8. 참조
+## 8. 벤치마크 결과
+
+### 8.1 환경
+
+| 항목 | 값 |
+|------|-----|
+| Board | Orange Pi 5 Plus (RK3588, aarch64) |
+| OS | Linux, Python 3.10.12 |
+| DX-RT / dx_engine | 1.1.4 |
+| DX-COM | v2.1.0-rc.4 (SNU 서버) |
+| Camera | USB, 640×480 |
+| Commit | `99f838d` |
+
+### 8.2 Palm Detection — NPU (.dxnn) vs CPU (TFLite)
+
+**재현 방법:**
+
+```bash
+cd ~/deepx/air_drum_pad
+python3 -c "
+import sys, time, cv2, numpy as np
+sys.path.insert(0, 'tools')
+from hand_tracker import FullNpuHandsTracker
+
+hand_dxnn = 'models/vendor/hand_landmark_lite.dxnn'
+hand_layout = 'models/dxnn_layout.mediapipe_hand_lite.json'
+
+# NPU palm
+t_npu = FullNpuHandsTracker(
+    palm_dxnn_path='models/vendor/palm_detection_lite.dxnn',
+    hand_dxnn_path=hand_dxnn, hand_layout_path=hand_layout, max_hands=2)
+
+# TFLite palm
+t_tfl = FullNpuHandsTracker(
+    palm_tflite_path='models/vendor/palm_detection_lite.tflite',
+    hand_dxnn_path=hand_dxnn, hand_layout_path=hand_layout, max_hands=2)
+t_npu._ensure_imports(); t_tfl._ensure_imports()
+
+cap = cv2.VideoCapture(0)
+cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
+cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+for _ in range(5): cap.read()
+_, frame = cap.read(); cap.release()
+rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+# Warm up
+for _ in range(3): t_npu.process(rgb); t_tfl.process(rgb)
+
+# Timed runs
+for label, tracker in [('NPU', t_npu), ('TFL', t_tfl)]:
+    times = []
+    for _ in range(10):
+        t0 = time.perf_counter()
+        tracker.process(rgb)
+        times.append((time.perf_counter() - t0) * 1000)
+    print(f'{label}: avg={np.mean(times):.1f}ms min={np.min(times):.1f}ms max={np.max(times):.1f}ms')
+t_npu.close(); t_tfl.close()
+"
+```
+
+**결과 (2026-04-17, commit `99f838d`):**
+
+| 측정 대상 | Palm NPU (.dxnn) | Palm CPU (TFLite XNNPACK) | 배수 |
+|-----------|----------------:|------------------------:|-----:|
+| Palm detection only | **12.2 ms** | 95.1 ms | ~8× |
+| Full pipeline (palm+hand, 10-frame avg) | **7.3 ms** | 43.1 ms | ~6× |
+| Full pipeline min | 6.8 ms | 40.5 ms | — |
+| Full pipeline max | 8.0 ms | 45.0 ms | — |
+
+> **Note:** "Full pipeline" 시간이 "palm only" 보다 짧은 이유: 손이 감지되지 않은 프레임에서는
+> hand landmark 추론이 스킵되므로 palm detection 이 거의 전부.
+> 캐시 워밍업 후 palm NPU 추론 자체는 ~7 ms 수준.
+
+### 8.3 npu-full End-to-End (손 감지 시)
+
+이전 세션 (#1, TFLite palm + NPU hand):
+
+| 조건 | 시간 | 손 수 |
+|------|-----:|------:|
+| Palm TFLite + Hand .dxnn | 99.4 ms | 2 |
+
+현재 세션 (#4, NPU palm + NPU hand):
+
+| 조건 | 시간 (추정) | 비고 |
+|------|----------:|------|
+| Palm .dxnn + Hand .dxnn | ~20–30 ms | palm 12ms + hand ~8ms/hand + CPU glue |
+
+> 실제 2-hand 감지 시 벤치마크는 다음 세션에서 카메라 앞 손 촬영으로 측정 예정.
+
+---
+
+## 9. 참조
 
 - 아키텍처: `docs/ARCHITECTURE.md`
