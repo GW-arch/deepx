@@ -127,6 +127,7 @@ class InstrumentStrikeDetector:
         vy_trigger: float = 0.01,
         joint_dps_trigger: float = 120.0,
         cooldown_s: float = 0.12,
+        min_tip_disp: float = 0.012,
         min_conf: float = 0.5,
         max_hands: int = 2,
         sound_mapper: Optional[Callable[[int, int], str]] = None,
@@ -134,6 +135,7 @@ class InstrumentStrikeDetector:
         self.vy_trigger = vy_trigger
         self.joint_dps_trigger = joint_dps_trigger
         self.cooldown_s = cooldown_s
+        self.min_tip_disp = min_tip_disp
         self.min_conf = min_conf
         self.max_hands = max_hands
         if sound_mapper is not None:
@@ -145,15 +147,19 @@ class InstrumentStrikeDetector:
 
             self._sound_mapper = _default_map
         self._prev_y: dict[tuple[int, int], float] = {}
+        self._prev_x: dict[tuple[int, int], float] = {}
         self._prev_t: dict[tuple[int, int], float] = {}
         self._prev_angle: dict[tuple[int, int], float] = {}
         self._last_hit: dict[tuple[int, int], float] = {}
+        self._last_hit_y: dict[tuple[int, int], float] = {}
 
     def reset(self) -> None:
         self._prev_y.clear()
+        self._prev_x.clear()
         self._prev_t.clear()
         self._prev_angle.clear()
         self._last_hit.clear()
+        self._last_hit_y.clear()
 
     def update_finger(
         self,
@@ -203,10 +209,17 @@ class InstrumentStrikeDetector:
         if not (tip_ok and joint_ok):
             return None
 
+        # Minimum displacement since last hit — reject jitter/noise
+        last_hit_y = self._last_hit_y.get(vk, ny - 1.0)
+        disp = ny - last_hit_y  # positive = moved down since last hit
+        if abs(disp) < self.min_tip_disp:
+            return None
+
         if t_s - self._last_hit.get(vk, 0.0) < self.cooldown_s:
             return None
 
         self._last_hit[vk] = t_s
+        self._last_hit_y[vk] = ny
         label = FINGER_LABELS.get(tip_id, "tip")
         track_id = f"h{hand_id}_{label}"
         sound_key = self._sound_mapper(hand_id, tip_id)

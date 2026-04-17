@@ -64,13 +64,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--vy-trigger",
         type=float,
-        default=0.04,
+        default=0.06,
         help="손끝 하강 속도(정규화 좌표/s) 하한",
     )
     p.add_argument(
         "--joint-dps",
         type=float,
-        default=250.0,
+        default=350.0,
         help="관절 각속도(|deg/s|) 하한 — 손가락 관절이 실제로 움직일 때",
     )
     p.add_argument("--cooldown", type=float, default=0.12, help="같은 손가락 연타 쿨다운(초)")
@@ -278,7 +278,7 @@ def main() -> int:
 
     # --- Strike feedback state: list of (expire_time, text, color) ---
     strike_events: list[tuple[float, str, tuple[int, int, int]]] = []
-    STRIKE_DISPLAY_SEC = 0.8
+    STRIKE_DISPLAY_SEC = 3.0
 
     try:
         fail_streak = 0
@@ -436,7 +436,7 @@ def main() -> int:
 
             # Strike feedback list
             strike_events = [(exp, txt, col) for exp, txt, col in strike_events if exp > t]
-            for i, (_, txt, col) in enumerate(strike_events[-8:]):
+            for i, (_, txt, col) in enumerate(strike_events[-20:]):
                 y_pos = _sidebar_y + i * 34
                 if y_pos + 30 > screen_h:
                     break
