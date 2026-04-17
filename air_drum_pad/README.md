@@ -103,9 +103,30 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 ## 문서
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
-- [EXPERIMENTS.md](docs/EXPERIMENTS.md)
-- [Palm+Hand NPU 파이프라인 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Phase 0~5 로드맵 + 체크박스  
+- [EXPERIMENTS.md](docs/EXPERIMENTS.md) — 벤치마크 결과 포함
+- [Palm+Hand NPU 파이프라인 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Phase 0~6 로드맵 + 체크박스  
 - [다음 세션 실험 가이드](docs/NEXT_SESSION_NPU_PALM.md) — 명령어·체크리스트·완료 기준
+
+## 악기 매핑 다이어그램
+
+`instruments/` 디렉터리에 각 프리셋별 손-소리 매핑 이미지가 있습니다.  
+재생성: `python3 tools/gen_instrument_diagrams.py`
+
+### Drum Kit — Default
+
+![Drum Default](instruments/drum_default.png)
+
+### Piano — Default C Major
+
+![Piano Default](instruments/piano_default.png)
+
+### Piano — Custom JSON
+
+![Piano Custom](instruments/piano_custom.png)
+
+### All Available Drum Sounds (16종)
+
+![All Drums](instruments/drum_all_instruments.png)
 
 ## 구성
 
@@ -123,3 +144,5 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | `tools/palm_mp_spec.py` | MediaPipe palm detection 그래프 상수 |
 | `tools/smoke_palm_interpreter.py` | Palm TFLite I/O 스모크 테스트 |
 | `tools/compile_dxnn.sh` | DX-COM 호출 래퍼 (`DX_COM` 환경변수 지원) |
+| `tools/gen_instrument_diagrams.py` | 악기 매핑 다이어그램 PNG 생성 (matplotlib) |
+| `instruments/` | 생성된 매핑 다이어그램 이미지 (drum, piano 등) |
