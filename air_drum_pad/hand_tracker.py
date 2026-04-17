@@ -683,7 +683,7 @@ class FullNpuHandsTracker:
         # Each entry: (center_x_px, center_y_px, roi_size_px, rotation_rad)
         self._prev_rois: list[tuple[float, float, float, float]] = []
         self._palm_skip_count: int = 0
-        self._PALM_REDETECT_EVERY: int = 5  # force palm every N frames
+        self._PALM_REDETECT_EVERY: int = 0  # 0 = always run palm (no tracking)
         self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
 
     def _ensure_imports(self) -> None:
@@ -750,8 +750,7 @@ class FullNpuHandsTracker:
         cy = (ymin + ymax) * 0.5
         long_side = max(xmax - xmin, ymax - ymin)
 
-        # Expand like MediaPipe (scale 2.0 — slightly less than palm's 2.6
-        # because landmarks already cover the full hand)
+        # Expand like MediaPipe (2.0x bounding box)
         roi_size = long_side * 2.0
         # Shift center slightly towards fingers (up along hand axis)
         shift_px = roi_size * (-0.1)
