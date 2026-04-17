@@ -2,3 +2,6 @@
 *.tflite
 *.onnx
 *.dxnn
+
+# export 스크립트가 쓰는 동명 레이아웃(상위 models/ 에 정본)
+dxnn_layout*.json
