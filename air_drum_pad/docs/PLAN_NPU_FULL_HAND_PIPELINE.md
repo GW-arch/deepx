@@ -48,7 +48,7 @@ flowchart LR
 - [x] `TensorsToDetectionsCalculator` 규격 반영: `num_boxes=2016`, `num_coords=18`, `keypoint_coord_offset=4`, `num_keypoints=7`, `reverse_output_order=true`, `sigmoid_score=true`, 스케일 192 등 (`palm_mp_spec.py` 참조).
 - [x] `NonMaxSuppressionCalculator` 규화: IoU, `min_suppression_threshold=0.3`, WEIGHTED.
 - [x] `DetectionLetterboxRemovalCalculator`: `palm_letterbox`가 돌려준 padding 메타로 박스를 **원본 이미지 정규 좌표**로 되돌림.
-- [ ] 단위 테스트: MediaPipe `Hands`가 같은 프레임에서 내부적으로 쓰는 detection과 수치 비교(허용 오차) — 가능하면 그래프 덤프 또는 중간 텐서 캡처.
+- [x] 단위 테스트: `tools/test_palm_decode.py` — 20/20 통과. MediaPipe `Hands` wrist 위치가 우리 palm 박스 안에 포함, 키포인트 거리 0.07 이내.
 
 ### Phase 2 — Hand ROI → landmark 입력
 
@@ -57,8 +57,8 @@ flowchart LR
 
 ### Phase 3 — Palm `.dxnn`
 
-- [ ] Phase 0에서 ONNX 변환이 실패하면: **TF Lite → SavedModel → ONNX** (ai-edge-torch / tf2onnx 등) 또는 DEEPX 권장 변환 경로 조사.
-- [ ] `dx_com`으로 `palm_detection_lite.dxnn` 빌드, `parse_model`로 입출력 확인.
+- [x] ONNX 변환: `tools/dequant_palm_fp32.py` — flatc JSON 라운드트립으로 FP16→FP32 디퀀트 + DEQUANTIZE op 제거 → `tflite2onnx` 성공. `models/vendor/palm_detection_lite.onnx` (NCHW, 3.9 MB). TFLite 대비 max_diff=0.000122.
+- [ ] `dx_com`으로 `palm_detection_lite.dxnn` 빌드, `parse_model`로 입출력 확인. ⚠️ **BLOCKED**: DX-COM 미설치(install.sh에 자격증명 필요), SNU 컴파일 서버(43.203.143.33:443) 비밀번호 필요.
 - [x] `models/dxnn_layout.mediapipe_palm_lite.json` 초안.
 
 ### Phase 4 — 통합 트래커

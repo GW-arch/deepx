@@ -1,6 +1,15 @@
 # 다음 세션 실험 가이드 — Palm + Hand NPU 파이프라인
 
-## 2026-04-17 세션 결과
+## 2026-04-17 세션 #2 결과
+
+- **커밋:** TBD (`main`)
+- **완료:**
+  - Phase 1 단위 테스트 — `tools/test_palm_decode.py` 20/20 통과 (MediaPipe Hands wrist 비교 포함)
+  - Phase 3 ONNX 변환 — `tools/dequant_palm_fp32.py`: flatc JSON 라운드트립으로 FP16→FP32 디퀀트 + DEQUANTIZE op 제거 → `tflite2onnx` 성공
+  - `models/vendor/palm_detection_lite.onnx` — NCHW [1,3,192,192], 3.9 MB, TFLite 대비 max_diff=0.000122
+- **보류:** DX-COM 미설치(install.sh 자격증명 필요) + SNU 컴파일 서버(비밀번호 필요) → palm `.dxnn` 빌드 불가
+
+## 2026-04-17 세션 #1 결과
 
 - **커밋:** `5403e83` (`main`)
 - **완료:** Phase 1(palm_decode), Phase 2(palm_roi), Phase 3 layout JSON, Phase 4(FullNpuHandsTracker + CLI)
@@ -59,38 +68,17 @@ python3 tools/palm_letterbox.py --camera 0   # 카메라 있을 때
 
 ---
 
-## Step D — Phase 1 구현 (본 세션의 핵심 작업)
+## Step D — Phase 1 구현 ✅ 완료
 
-**목표:** `tools/palm_decode.py`에서 `NotImplementedError` 제거.
-
-1. **앵커 생성**  
-   - 참고: MediaPipe [`ssd_anchors_calculator.cc`](https://github.com/google-ai-edge/mediapipe/blob/master/mediapipe/calculators/tflite/ssd_anchors_calculator.cc)  
-   - 입력: `tools/palm_mp_spec.py`의 `SSD_*` 상수와 동일 옵션.
-
-2. **TensorsToDetections**  
-   - `DET_*` 상수 그대로 사용 (`palm_mp_spec.py` 옆 `palm_decode.py`).
-
-3. **Weighted NMS**  
-   - `NMS_MIN_SUPPRESSION_THRESHOLD = 0.3`, IoU.
-
-4. **Letterbox 제거**  
-   - `palm_letterbox.rgb_uint8_to_palm_input_tensor`가 반환하는 `LetterboxPadding`으로 detection 좌표를 **원본 이미지 정규화 [0,1]** 로 변환.
-
-**검증 아이디어 (택1~복수):**
-
-- 동일 RGB에 대해 **MediaPipe `Hands`** 한 번 돌리고, 내부 palm과 직접 비교는 어렵우므로  
-  **눈으로**: 디코드된 박스를 `cv2.rectangle`으로 그려 저장 PNG 3장.  
-- 또는 TFLite 출력 텐서를 **raw로 덤프**한 뒤, C++ MediaPipe 단위 테스트 수치가 있으면 대조.
-
-**완료 기준:** 한 프레임에서 **≥1개** detection이 합리적인 위치(이미지 안, 손이 있는 영상 사용)에 나오고, 빈 배경에서는 점수 낮게 나오면 1차 성공.
+`tools/test_palm_decode.py` 20/20 통과. `test_vs_mediapipe()` — 카메라 프레임에서 palm det score=0.865, MP wrist가 palm 박스 내부에 위치, kp0↔wrist 거리=0.0707.
 
 ---
 
-## Step E — ONNX / `.dxnn` (호스트 또는 DX-COM 환경)
+## Step E — ONNX / `.dxnn`
 
-- Palm ONNX: `tflite2onnx` 실패 시 **tf2onnx / onnx 변환 경로** 조사 후 한 경로로 고정.
-- `parse_model -m palm_detection_lite.dxnn`으로 입출력 기록.
-- 레이아웃 초안: `models/dxnn_layout.mediapipe_palm_lite.json` (이름은 프로젝트 규칙에 맞게).
+- ✅ Palm ONNX: `tools/dequant_palm_fp32.py`로 변환 성공. 경로: `models/vendor/palm_detection_lite.onnx` (NCHW [1,3,192,192]).
+- ⬜ `dx_com`으로 `.dxnn` 빌드 — **BLOCKED**: DX-COM 미설치 + SNU 서버 비밀번호 필요.
+- ⬜ `parse_model -m palm_detection_lite.dxnn`으로 입출력 기록 → 레이아웃 JSON 최종 확정.
 
 ---
 
