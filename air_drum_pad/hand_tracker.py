@@ -683,7 +683,7 @@ class FullNpuHandsTracker:
         # Each entry: (center_x_px, center_y_px, roi_size_px, rotation_rad)
         self._prev_rois: list[tuple[float, float, float, float]] = []
         self._palm_skip_count: int = 0
-        self._PALM_REDETECT_EVERY: int = 2  # force palm every N frames (low = more stable)
+        self._PALM_REDETECT_EVERY: int = 30  # force palm every N frames (~1/sec at 30fps)
         self._smoother = _LandmarkSmoother(alpha=0.15, velocity_scale=4.0)
         # ROI smoother: (cx, cy, sz, rot) per hand index
         self._prev_smooth_rois: dict[int, np.ndarray] = {}
@@ -818,8 +818,7 @@ class FullNpuHandsTracker:
 
         # --- Full palm detection ---
         self._palm_skip_count = 0
-        self._prev_smooth_rois.clear()
-        self._smoother.clear()
+        # Don't clear smoothers — preserve continuity across palm redetect
         dets = self._run_palm(rgb)
         if dets.shape[0] == 0:
             self._prev_rois.clear()
@@ -831,8 +830,21 @@ class FullNpuHandsTracker:
 
         lms_list = []
         new_rois = []
-        for det in dets:
+        for di, det in enumerate(dets):
             patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
+            # Blend palm ROI with previous tracked ROI to prevent jumps
+            palm_roi = (cx, cy, sz, rot)
+            if di < len(self._prev_rois):
+                prev = np.array(self._prev_rois[di], dtype=np.float64)
+                cur = np.array(palm_roi, dtype=np.float64)
+                # Handle rotation wrapping
+                if cur[3] - prev[3] > math.pi:
+                    cur[3] -= 2 * math.pi
+                elif cur[3] - prev[3] < -math.pi:
+                    cur[3] += 2 * math.pi
+                blended = prev + 0.4 * (cur - prev)
+                cx, cy, sz, rot = float(blended[0]), float(blended[1]), float(blended[2]), float(blended[3])
+                patch = self._warp_roi(rgb, cx, cy, sz, rot, out_size=224)
             result = self._hand_tracker.process(patch)
             if not result.multi_hand_landmarks:
                 continue
