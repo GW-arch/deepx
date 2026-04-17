@@ -1,85 +1,97 @@
 #!/usr/bin/env python3
 """
-AI Air-Drum Pad — multi-hand / multi-fingertip → Hit zones → pygame audio.
+AI Air-Drum Pad — 손가락 관절·손끝 추적으로 실제 악기를 치는 것처럼 타격 감지.
 
-DeepX M1: swap MediaPipe for DX-RT + Hand ONNX; keep StrikeDetector + zones.
+DeepX M1: MediaPipe 자리에 DX-RT Hand 모델만 교체하면 됨 (동일 strike_detector 입력).
 """
 from __future__ import annotations
 
 import argparse
 import sys
 import time
+from collections import defaultdict, deque
 
 import cv2
 import mediapipe as mp
+import numpy as np
 import pygame
 
 from drumkit_audio import build_kit
 from strike_detector import (
+    FINGER_ANGLE_CHAIN,
     FINGER_LABELS,
     FINGERTIP_INDICES,
-    StrikeDetector,
-    default_zones,
+    InstrumentStrikeDetector,
 )
 
-# BGR for OpenCV — one color per fingertip role
+# BGR — 손가락별
 FINGER_COLORS: dict[int, tuple[int, int, int]] = {
-    4: (180, 180, 255),  # thumb — light pink
-    8: (255, 255, 0),  # index — cyan
-    12: (0, 255, 0),  # middle — green
-    16: (255, 0, 255),  # ring — magenta
-    20: (0, 165, 255),  # pinky — orange
+    4: (180, 180, 255),
+    8: (255, 255, 0),
+    12: (0, 255, 0),
+    16: (255, 0, 255),
+    20: (0, 165, 255),
 }
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="AI Air-Drum Pad (multi-hand)")
+    p = argparse.ArgumentParser(
+        description="Air-Drum: joint + tip velocity (like striking drums)",
+    )
     p.add_argument("--camera", type=int, default=0, help="V4L2 camera index")
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
-    p.add_argument("--vy-trigger", type=float, default=0.012, help="Norm coords / sec")
-    p.add_argument("--cooldown", type=float, default=0.1, help="Seconds per pad+finger")
-    p.add_argument("--max-hands", type=int, default=2, choices=[1, 2], help="MediaPipe max hands")
     p.add_argument(
-        "--model-complexity",
-        type=int,
-        default=0,
-        choices=[0, 1],
-        help="0=faster, 1=more accurate (multi-hand)",
+        "--vy-trigger",
+        type=float,
+        default=0.01,
+        help="손끝 하강 속도(정규화 좌표/s) 하한",
     )
+    p.add_argument(
+        "--joint-dps",
+        type=float,
+        default=120.0,
+        help="관절 각속도(|deg/s|) 하한 — 손가락 관절이 실제로 움직일 때",
+    )
+    p.add_argument("--cooldown", type=float, default=0.12, help="같은 손가락 연타 쿨다운(초)")
+    p.add_argument("--max-hands", type=int, default=2, choices=[1, 2])
+    p.add_argument("--model-complexity", type=int, default=0, choices=[0, 1])
+    p.add_argument("--trail", type=int, default=24, help="손끝 궤적 길이(프레임)")
     return p.parse_args()
 
 
-def draw_zones(frame, zones) -> None:
+def draw_finger_chain(
+    frame: np.ndarray,
+    hand_lms: object,
+    tip_id: int,
+    color: tuple[int, int, int],
+) -> None:
+    """관절 체인 시각화 (디버그·연주 느낌)."""
+    if tip_id not in FINGER_ANGLE_CHAIN:
+        return
+    a, b, c = FINGER_ANGLE_CHAIN[tip_id]
     h, w = frame.shape[:2]
-    for i, z in enumerate(zones):
-        x0, y0 = int(z.x0 * w), int(z.y0 * h)
-        x1, y1 = int(z.x1 * w), int(z.y1 * h)
-        hue = (i * 18) % 80
-        color = (40, 180 + hue, 40)
-        cv2.rectangle(frame, (x0, y0), (x1, y1), color, 2)
-        label = z.sound_key
-        cv2.putText(
-            frame,
-            label,
-            (x0 + 3, y0 + 18),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.45,
-            (220, 255, 220),
-            1,
-            cv2.LINE_AA,
-        )
+    pts = []
+    for i in (a, b, c):
+        lm = hand_lms.landmark[i]
+        pts.append((int(lm.x * w), int(lm.y * h)))
+    for i in range(len(pts) - 1):
+        cv2.line(frame, pts[i], pts[i + 1], color, 2, cv2.LINE_AA)
 
 
 def main() -> int:
     args = parse_args()
     pygame.init()
     kit = build_kit()
-    zones = default_zones()
-    det = StrikeDetector(
-        zones,
+    det = InstrumentStrikeDetector(
         vy_trigger=args.vy_trigger,
+        joint_dps_trigger=args.joint_dps,
         cooldown_s=args.cooldown,
+        max_hands=args.max_hands,
+    )
+
+    trails: dict[tuple[int, int], deque[tuple[int, int]]] = defaultdict(
+        lambda: deque(maxlen=max(4, args.trail)),
     )
 
     cap = cv2.VideoCapture(args.camera)
@@ -98,7 +110,7 @@ def main() -> int:
     fps_t0 = time.perf_counter()
     frames = 0
     print(
-        "Air-Drum: q=quit | Up to 2 hands × 5 fingertips | Downward strike into pads",
+        "Air-Drum: q=quit | tip↓speed + joint motion → hit | (손,손가락)→악기",
         flush=True,
     )
 
@@ -113,8 +125,6 @@ def main() -> int:
             t = time.perf_counter()
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
-
-            draw_zones(frame, zones)
 
             landmarks_list = res.multi_hand_landmarks or []
             handedness_list = res.multi_handedness or []
@@ -143,23 +153,31 @@ def main() -> int:
                 )
 
                 for fid in FINGERTIP_INDICES:
-                    lm = hand_lms.landmark[fid]
-                    hit = det.update_finger(hand_idx, fid, t, lm.x, lm.y, conf)
+                    col = FINGER_COLORS.get(fid, (200, 200, 200))
+                    draw_finger_chain(frame, hand_lms, fid, col)
+
+                    hit = det.update_finger(hand_idx, fid, t, hand_lms, conf)
                     if hit:
                         _, sk = hit
                         if sk in kit:
                             kit[sk].play()
 
+                    lm = hand_lms.landmark[fid]
                     px = int(lm.x * frame.shape[1])
                     py = int(lm.y * frame.shape[0])
-                    col = FINGER_COLORS.get(fid, (200, 200, 200))
-                    cv2.circle(frame, (px, py), 7, col, -1)
-                    cv2.circle(frame, (px, py), 8, (255, 255, 255), 1)
+                    trails[(hand_idx, fid)].append((px, py))
+                    tdeque = trails[(hand_idx, fid)]
+                    if len(tdeque) >= 2:
+                        arr = np.array(list(tdeque), dtype=np.int32)
+                        cv2.polylines(frame, [arr], False, col, 2, cv2.LINE_AA)
+
+                    cv2.circle(frame, (px, py), 6, col, -1)
+                    cv2.circle(frame, (px, py), 7, (255, 255, 255), 1)
                     fn = FINGER_LABELS.get(fid, "?")
                     cv2.putText(
                         frame,
                         fn[0].upper(),
-                        (px + 6, py - 6),
+                        (px + 5, py - 5),
                         cv2.FONT_HERSHEY_SIMPLEX,
                         0.35,
                         col,
@@ -172,18 +190,17 @@ def main() -> int:
                 fps = frames / max(elapsed, 1e-6)
                 cv2.putText(
                     frame,
-                    f"FPS ~{fps:.1f}  hands={args.max_hands}",
-                    (10, 26),
+                    f"FPS ~{fps:.1f}  vy>={args.vy_trigger} |joint|>={args.joint_dps:.0f}deg/s",
+                    (8, 24),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.65,
+                    0.5,
                     (0, 255, 255),
                     2,
                     cv2.LINE_AA,
                 )
 
-            cv2.imshow("AI Air-Drum Pad (multi)", frame)
-            key = cv2.waitKey(1) & 0xFF
-            if key == ord("q"):
+            cv2.imshow("AI Air-Drum (kinematic)", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
         cap.release()
