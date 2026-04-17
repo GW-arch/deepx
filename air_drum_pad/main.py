@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-AI Air-Drum Pad — Camera → MediaPipe Hands → Hit zones + velocity strike → pygame audio.
+AI Air-Drum Pad — multi-hand / multi-fingertip → Hit zones → pygame audio.
 
-DeepX M1: replace MediaPipe with DX-RT + compiled Hand ONNX (.dxnn); keep StrikeDetector.
+DeepX M1: swap MediaPipe for DX-RT + Hand ONNX; keep StrikeDetector + zones.
 """
 from __future__ import annotations
 
@@ -15,33 +15,58 @@ import mediapipe as mp
 import pygame
 
 from drumkit_audio import build_kit
-from strike_detector import StrikeDetector, default_zones
+from strike_detector import (
+    FINGER_LABELS,
+    FINGERTIP_INDICES,
+    StrikeDetector,
+    default_zones,
+)
+
+# BGR for OpenCV — one color per fingertip role
+FINGER_COLORS: dict[int, tuple[int, int, int]] = {
+    4: (180, 180, 255),  # thumb — light pink
+    8: (255, 255, 0),  # index — cyan
+    12: (0, 255, 0),  # middle — green
+    16: (255, 0, 255),  # ring — magenta
+    20: (0, 165, 255),  # pinky — orange
+}
 
 
 def parse_args() -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="AI Air-Drum Pad prototype")
+    p = argparse.ArgumentParser(description="AI Air-Drum Pad (multi-hand)")
     p.add_argument("--camera", type=int, default=0, help="V4L2 camera index")
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
     p.add_argument("--vy-trigger", type=float, default=0.012, help="Norm coords / sec")
-    p.add_argument("--cooldown", type=float, default=0.12, help="Seconds per pad")
+    p.add_argument("--cooldown", type=float, default=0.1, help="Seconds per pad+finger")
+    p.add_argument("--max-hands", type=int, default=2, choices=[1, 2], help="MediaPipe max hands")
+    p.add_argument(
+        "--model-complexity",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="0=faster, 1=more accurate (multi-hand)",
+    )
     return p.parse_args()
 
 
 def draw_zones(frame, zones) -> None:
     h, w = frame.shape[:2]
-    for z in zones:
+    for i, z in enumerate(zones):
         x0, y0 = int(z.x0 * w), int(z.y0 * h)
         x1, y1 = int(z.x1 * w), int(z.y1 * h)
-        cv2.rectangle(frame, (x0, y0), (x1, y1), (0, 220, 0), 2)
+        hue = (i * 18) % 80
+        color = (40, 180 + hue, 40)
+        cv2.rectangle(frame, (x0, y0), (x1, y1), color, 2)
+        label = z.sound_key
         cv2.putText(
             frame,
-            z.name,
-            (x0 + 4, y0 + 22),
+            label,
+            (x0 + 3, y0 + 18),
             cv2.FONT_HERSHEY_SIMPLEX,
-            0.6,
-            (0, 255, 200),
-            2,
+            0.45,
+            (220, 255, 220),
+            1,
             cv2.LINE_AA,
         )
 
@@ -64,15 +89,18 @@ def main() -> int:
 
     hands = mp.solutions.hands.Hands(
         static_image_mode=False,
-        max_num_hands=1,
-        model_complexity=0,
-        min_detection_confidence=0.7,
+        max_num_hands=args.max_hands,
+        model_complexity=args.model_complexity,
+        min_detection_confidence=0.65,
         min_tracking_confidence=0.5,
     )
 
     fps_t0 = time.perf_counter()
     frames = 0
-    print("Air-Drum Pad running. q=quit. Strike downward into green pads.")
+    print(
+        "Air-Drum: q=quit | Up to 2 hands × 5 fingertips | Downward strike into pads",
+        flush=True,
+    )
 
     try:
         while True:
@@ -86,39 +114,74 @@ def main() -> int:
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             res = hands.process(rgb)
 
-            tip_x = tip_y = 0.5
-            conf = 0.0
-            if res.multi_hand_landmarks:
-                lm = res.multi_hand_landmarks[0].landmark[8]
-                tip_x, tip_y = lm.x, lm.y
-                conf = 1.0
-                if res.multi_handedness:
-                    conf = float(res.multi_handedness[0].classification[0].score)
-
-            hit = det.update(t, tip_x, tip_y, conf)
-            if hit:
-                _, key = hit
-                kit[key].play()
-
             draw_zones(frame, zones)
-            hx, hy = int(tip_x * frame.shape[1]), int(tip_y * frame.shape[0])
-            cv2.circle(frame, (hx, hy), 10, (0, 128, 255), -1)
+
+            landmarks_list = res.multi_hand_landmarks or []
+            handedness_list = res.multi_handedness or []
+
+            for hand_idx, hand_lms in enumerate(landmarks_list):
+                conf = 1.0
+                if hand_idx < len(handedness_list):
+                    conf = float(handedness_list[hand_idx].classification[0].score)
+
+                wrist = hand_lms.landmark[0]
+                wx = int(wrist.x * frame.shape[1])
+                wy = int(wrist.y * frame.shape[0])
+                label = "?"
+                if hand_idx < len(handedness_list):
+                    lr = handedness_list[hand_idx].classification[0].label
+                    label = lr[0].upper()
+                cv2.putText(
+                    frame,
+                    f"H{hand_idx}:{label}",
+                    (wx - 10, wy - 12),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.55,
+                    (200, 255, 255),
+                    2,
+                    cv2.LINE_AA,
+                )
+
+                for fid in FINGERTIP_INDICES:
+                    lm = hand_lms.landmark[fid]
+                    hit = det.update_finger(hand_idx, fid, t, lm.x, lm.y, conf)
+                    if hit:
+                        _, sk = hit
+                        if sk in kit:
+                            kit[sk].play()
+
+                    px = int(lm.x * frame.shape[1])
+                    py = int(lm.y * frame.shape[0])
+                    col = FINGER_COLORS.get(fid, (200, 200, 200))
+                    cv2.circle(frame, (px, py), 7, col, -1)
+                    cv2.circle(frame, (px, py), 8, (255, 255, 255), 1)
+                    fn = FINGER_LABELS.get(fid, "?")
+                    cv2.putText(
+                        frame,
+                        fn[0].upper(),
+                        (px + 6, py - 6),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.35,
+                        col,
+                        1,
+                        cv2.LINE_AA,
+                    )
 
             if frames % 30 == 0:
                 elapsed = time.perf_counter() - fps_t0
                 fps = frames / max(elapsed, 1e-6)
                 cv2.putText(
                     frame,
-                    f"FPS ~{fps:.1f}",
-                    (10, 28),
+                    f"FPS ~{fps:.1f}  hands={args.max_hands}",
+                    (10, 26),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.8,
-                    (255, 255, 0),
+                    0.65,
+                    (0, 255, 255),
                     2,
                     cv2.LINE_AA,
                 )
 
-            cv2.imshow("AI Air-Drum Pad", frame)
+            cv2.imshow("AI Air-Drum Pad (multi)", frame)
             key = cv2.waitKey(1) & 0xFF
             if key == ord("q"):
                 break
