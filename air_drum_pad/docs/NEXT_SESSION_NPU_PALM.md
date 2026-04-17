@@ -1,5 +1,13 @@
 # 다음 세션 실험 가이드 — Palm + Hand NPU 파이프라인
 
+## 2026-04-17 세션 결과
+
+- **커밋:** `5403e83` (`main`)
+- **완료:** Phase 1(palm_decode), Phase 2(palm_roi), Phase 3 layout JSON, Phase 4(FullNpuHandsTracker + CLI)
+- **보류:** Palm ONNX 변환(tflite2onnx 실패, tf2onnx 필요) → palm `.dxnn` 빌드 불가
+
+---
+
 이 문서는 **다음 작업 세션**에서 바로 이어서 할 **실험·구현 순서**만 적습니다. 배경·아키텍처는 [`PLAN_NPU_FULL_HAND_PIPELINE.md`](PLAN_NPU_FULL_HAND_PIPELINE.md)를 보세요.
 
 ---
@@ -95,8 +103,8 @@ python3 tools/palm_letterbox.py --camera 0   # 카메라 있을 때
 
 ## 세션 끝날 때 남길 것
 
-- [ ] `docs/PLAN_NPU_FULL_HAND_PIPELINE.md` 안 Phase 체크박스 갱신  
-- [ ] 본 파일(`NEXT_SESSION_NPU_PALM.md`) 상단에 **날짜·커밋 해시·실험 요약 3줄** 적기 (선택)  
+- [x] `docs/PLAN_NPU_FULL_HAND_PIPELINE.md` 안 Phase 체크박스 갱신  
+- [x] 본 파일(`NEXT_SESSION_NPU_PALM.md`) 상단에 **날짜·커밋 해시·실험 요약 3줄** 적기  
 - [ ] 막힌 경우: 재현 커맨드 + 로그 스니펫을 이슈/메모에 붙여넣기
 
 ---

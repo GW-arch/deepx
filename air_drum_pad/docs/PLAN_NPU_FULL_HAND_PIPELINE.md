@@ -44,31 +44,31 @@ flowchart LR
 
 ### Phase 1 — Palm 출력 디코드 (CPU, NumPy)
 
-- [ ] `tools/palm_decode.py` (또는 `palm_pipeline/decode.py`): `SsdAnchorsCalculator`와 동등한 **앵커 생성** (C++ `ssd_anchors_calculator.cc` 이식 또는 TF research 코드 참고).
-- [ ] `TensorsToDetectionsCalculator` 규격 반영: `num_boxes=2016`, `num_coords=18`, `keypoint_coord_offset=4`, `num_keypoints=7`, `reverse_output_order=true`, `sigmoid_score=true`, 스케일 192 등 (`palm_mp_spec.py` 참조).
-- [ ] `NonMaxSuppressionCalculator` 규화: IoU, `min_suppression_threshold=0.3`, WEIGHTED.
-- [ ] `DetectionLetterboxRemovalCalculator`: `palm_letterbox`가 돌려준 padding 메타로 박스를 **원본 이미지 정규 좌표**로 되돌림.
+- [x] `tools/palm_decode.py`: `SsdAnchorsCalculator`와 동등한 **앵커 생성** (C++ `ssd_anchors_calculator.cc` 이식).
+- [x] `TensorsToDetectionsCalculator` 규격 반영: `num_boxes=2016`, `num_coords=18`, `keypoint_coord_offset=4`, `num_keypoints=7`, `reverse_output_order=true`, `sigmoid_score=true`, 스케일 192 등 (`palm_mp_spec.py` 참조).
+- [x] `NonMaxSuppressionCalculator` 규화: IoU, `min_suppression_threshold=0.3`, WEIGHTED.
+- [x] `DetectionLetterboxRemovalCalculator`: `palm_letterbox`가 돌려준 padding 메타로 박스를 **원본 이미지 정규 좌표**로 되돌림.
 - [ ] 단위 테스트: MediaPipe `Hands`가 같은 프레임에서 내부적으로 쓰는 detection과 수치 비교(허용 오차) — 가능하면 그래프 덤프 또는 중간 텐서 캡처.
 
 ### Phase 2 — Hand ROI → landmark 입력
 
-- [ ] MediaPipe `hand_landmark_tracking` 그래프의 **RectTransformation** / **warp** 규칙 이식 (회전·스케일·종횡비). Palm의 7개 키포인트로 손 사각형을 정의하는 부분.
-- [ ] 기존 `DxnnHandTracker`가 받는 크롭을 “전체 프레임”이 아니라 **위 ROI**로 제한.
+- [x] MediaPipe `hand_landmark_tracking` 그래프의 **RectTransformation** / **warp** 규칙 이식 (회전·스케일·종횡비). `tools/palm_roi.py` — Palm의 7개 키포인트로 손 사각형을 정의, affine warp 224×224, 역변환.
+- [x] 기존 `DxnnHandTracker`가 받는 크롭을 "전체 프레임"이 아니라 **위 ROI**로 제한 — `FullNpuHandsTracker`에서 사용.
 
 ### Phase 3 — Palm `.dxnn`
 
 - [ ] Phase 0에서 ONNX 변환이 실패하면: **TF Lite → SavedModel → ONNX** (ai-edge-torch / tf2onnx 등) 또는 DEEPX 권장 변환 경로 조사.
 - [ ] `dx_com`으로 `palm_detection_lite.dxnn` 빌드, `parse_model`로 입출력 확인.
-- [ ] `models/dxnn_layout.mediapipe_palm_lite.json` 초안.
+- [x] `models/dxnn_layout.mediapipe_palm_lite.json` 초안.
 
 ### Phase 4 — 통합 트래커
 
-- [ ] `hand_tracker.py`에 `FullNpuHandsTracker` (가칭): Palm `.dxnn` + landmark `.dxnn`, 실패 시 Palm만 TFLite 폴백 등.
-- [ ] `main.py --backend npu-full` 또는 `--palm-dxnn` / `--hand-dxnn` 플래그.
+- [x] `hand_tracker.py`에 `FullNpuHandsTracker`: Palm TFLite(CPU) + landmark `.dxnn`(NPU), Palm `.dxnn` 확보 시 NPU 교체 가능.
+- [x] `main.py --backend npu-full` + `--palm-tflite` 플래그.
 
 ### Phase 5 — 정리
 
-- [ ] README / `models/README.md`에 두 `.dxnn` 경로와 Phase 1~2 정확도 노트.
+- [x] README 업데이트: `npu-full` 사용법, 도구 목록, 구현 현황 → PLAN 체크박스로 이전.
 
 ## 리스크·메모
 

@@ -91,19 +91,8 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [EXPERIMENTS.md](docs/EXPERIMENTS.md)
-- [Palm+Hand NPU 파이프라인 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Phase 0~5 로드맵  
+- [Palm+Hand NPU 파이프라인 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Phase 0~5 로드맵 + 체크박스  
 - [다음 세션 실험 가이드](docs/NEXT_SESSION_NPU_PALM.md) — 명령어·체크리스트·완료 기준
-
-### 구현 현황
-
-| Phase | 내용 | 상태 |
-|-------|------|------|
-| 0 | Palm 상수·letterbox·export·smoke | ✅ |
-| 1 | `palm_decode.py` — 앵커·디코드·NMS·letterbox 제거 | ✅ |
-| 2 | `palm_roi.py` — palm keypoints → ROI warp 224×224 | ✅ |
-| 3 | Palm `.dxnn` layout JSON 초안 | ✅ (ONNX 변환은 tflite2onnx 제약으로 보류) |
-| 4 | `FullNpuHandsTracker` + `--backend npu-full` CLI | ✅ |
-| 5 | README / models/README 정리 | ✅ |
 
 ## 구성
 
