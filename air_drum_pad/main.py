@@ -7,7 +7,6 @@ DeepX M1: MediaPipe TFLite → ONNX(`tools/export_mediapipe_hand_onnx.py`) → D
 from __future__ import annotations
 
 import argparse
-import math
 import os
 import sys
 import time
@@ -24,15 +23,11 @@ import numpy as np
 import pygame
 
 from drumkit_audio import (
-    PIANO_DEFAULT_SLOTS,
     build_kit,
-    build_piano_kit,
     build_piano_kit_for_slots,
     kit_keys,
     load_piano_slots_json,
     piano_kit_keys,
-    piano_slots_from_inter_hand_distance,
-    wide_piano_prerender_names,
 )
 from hand_tracker import create_tracker
 from strike_detector import (
@@ -92,7 +87,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--piano",
         action="store_true",
-        help="피아노 모드: 음명(C4 등) 합성음. --instruments 없으면 양손 손목 거리로 음역 자동",
+        help="피아노 모드: 음명(C4 등) 합성음. 기본 instruments.piano.example.json 사용, --instruments로 변경 가능",
     )
     p.add_argument(
         "--backend",
@@ -169,29 +164,15 @@ def main() -> int:
 
     pygame.init()
     slots: tuple[str, ...] | None = None
-    slot_state: dict[str, tuple[str, ...]] = {"slots": tuple(PIANO_DEFAULT_SLOTS)}
     side_by_mp: dict[int, int] = {}
-    use_piano_dynamic = bool(args.piano and not args.instruments.strip())
+    piano_json = args.instruments.strip() if args.instruments.strip() else "instruments.piano.example.json"
 
     if args.piano:
-        if args.instruments.strip():
-            slots = load_piano_slots_json(args.instruments.strip())
-            kit = build_piano_kit_for_slots(slots)
-            sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
-                h, lm, max_hands=mh, sound_slots=s
-            )
-        else:
-            kit = build_piano_kit(note_names=wide_piano_prerender_names())
-
-            def piano_dynamic_mapper(h: int, lm: int) -> str:
-                return sound_key_for_finger(
-                    side_by_mp[h],
-                    lm,
-                    max_hands=args.max_hands,
-                    sound_slots=slot_state["slots"],
-                )
-
-            sound_mapper = piano_dynamic_mapper
+        slots = load_piano_slots_json(piano_json)
+        kit = build_piano_kit_for_slots(slots)
+        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
+            h, lm, max_hands=mh, sound_slots=s
+        )
     else:
         kit = build_kit()
         sound_mapper = None
@@ -317,14 +298,6 @@ def main() -> int:
                 else:
                     side_by_mp[i] = 0 if hl.landmark[0].x < 0.5 else 1
 
-            piano_wrist_d = 0.11
-            if use_piano_dynamic:
-                if len(landmarks_list) >= 2:
-                    w0 = landmarks_list[0].landmark[0]
-                    w1 = landmarks_list[1].landmark[0]
-                    piano_wrist_d = math.hypot(w0.x - w1.x, w0.y - w1.y)
-                slot_state["slots"] = piano_slots_from_inter_hand_distance(piano_wrist_d)
-
             for hand_idx, hand_lms in enumerate(landmarks_list):
                 conf = 1.0
                 if hand_idx < len(handedness_list):
@@ -347,20 +320,6 @@ def main() -> int:
                     2,
                     cv2.LINE_AA,
                 )
-
-                if use_piano_dynamic and hand_idx == 0:
-                    s = slot_state["slots"]
-                    hint = f"d={piano_wrist_d:.2f} L:{s[0]}-{s[4]} R:{s[5]}-{s[9]}"
-                    cv2.putText(
-                        frame,
-                        hint,
-                        (8, frame.shape[0] - 12),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.48,
-                        (200, 220, 255),
-                        1,
-                        cv2.LINE_AA,
-                    )
 
                 for fid in FINGERTIP_INDICES:
                     col = FINGER_COLORS.get(fid, (200, 200, 200))
