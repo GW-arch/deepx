@@ -64,13 +64,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--vy-trigger",
         type=float,
-        default=0.01,
+        default=0.03,
         help="손끝 하강 속도(정규화 좌표/s) 하한",
     )
     p.add_argument(
         "--joint-dps",
         type=float,
-        default=120.0,
+        default=20.0,
         help="관절 각속도(|deg/s|) 하한 — 손가락 관절이 실제로 움직일 때",
     )
     p.add_argument("--cooldown", type=float, default=0.12, help="같은 손가락 연타 쿨다운(초)")
