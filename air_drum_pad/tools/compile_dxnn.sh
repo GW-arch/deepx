@@ -12,6 +12,13 @@ if [[ -n "${DX_COM:-}" ]]; then
 fi
 
 # 흔한 CLI 이름 후보 (설치 환경마다 다름 — 실패 시 DX_COM 환경변수로 전체 명령 지정)
+# dx-all-suite 설치 시 venv 안의 dxcom:
+for venv in "${HOME}/dx-all-suite/dx-compiler/venv-dx-compiler-local" "${HOME}/dx-all-suite/dx-compiler/venv-dx-compiler"; do
+  if [[ -x "${venv}/bin/dxcom" ]]; then
+    echo "Found: ${venv}/bin/dxcom"
+    exec "${venv}/bin/dxcom" "$ONNX" "$OUT" "$@"
+  fi
+done
 for cmd in dx_com dx-com dxcom DX-COM; do
   if command -v "$cmd" &>/dev/null; then
     echo "Found: $cmd"

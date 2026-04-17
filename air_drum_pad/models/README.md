@@ -28,7 +28,13 @@ python3 tools/export_mediapipe_hand_onnx.py --variant lite --dual-halves-layout
 
 ## 2) DX-COM으로 `.dxnn` (호스트 또는 크로스 컴파일 환경)
 
-DX-COM CLI 이름은 설치본마다 다릅니다. 스크립트는 `dx_com` 등을 찾고, 없으면 **`DX_COM` 환경변수**로 전체 명령을 넘기면 됩니다.
+### aarch64 보드(Orange Pi 등)
+
+`~/dx-all-suite/dx-compiler/install.sh` 기준 **DX-COM(dxcom) 공식 설치는 amd64 / x86_64만 지원**합니다.  
+이 보드에서는 **ONNX → `.dxnn` 컴파일을 할 수 없고**, x86_64 PC(또는 해당 아키텍처 환경)에서 컴파일한 `hand_landmark_lite.dxnn` 파일만 복사해 오면 됩니다.  
+**DX-RT**(`dx_engine`, `parse_model`, `run_model`)는 aarch64에 설치된 상태로 `--backend npu` 실행에 사용합니다.
+
+DX-COM CLI 이름은 설치본마다 다릅니다. 스크립트는 `dxcom`(dx-all-suite venv) / `dx_com` 등을 찾고, 없으면 **`DX_COM` 환경변수**로 전체 명령을 넘기면 됩니다.
 
 ```bash
 export DX_COM='dx_com --your-flags-here'   # 예시 — 실제 플래그는 DEEPX 매뉴얼 따름
