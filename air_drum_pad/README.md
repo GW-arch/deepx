@@ -20,12 +20,23 @@
 
 **음색**을 바꾸려면 `drumkit_audio.py`의 `_KIT_BUILDERS`에 키를 추가·수정한 뒤 JSON에서 그 키를 쓰면 됩니다.
 
+### 피아노 모드
+
+- 실행: `python3 main.py --piano --camera 0`  
+  기본은 **C4~E5** 10음을 손0·손1 손가락 순에 매핑(짧은 **합성** 사인파 — 실제 샘플 피아노는 아님).
+- 음 배열 바꾸기: `instruments.piano.example.json` 참고 후  
+  `python3 main.py --piano --instruments 내피아노.json --camera 0`  
+  (`slots` 값은 `C4`, `D#5`, `Bb3` 같은 **음명** 10개)
+- 사용 가능 음명: `python3 main.py --piano --list-instruments`
+
 ## 실행
 
 ```bash
 cd air_drum_pad
 pip3 install -r requirements.txt
 python3 main.py --camera 0
+# 피아노:
+# python3 main.py --piano --camera 0
 ```
 
 - 종료: `q`

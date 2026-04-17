@@ -60,15 +60,18 @@ def sound_key_for_finger(
     return slots[slot]
 
 
-def load_instrument_slots_json(path: str) -> tuple[str, ...]:
+def load_instrument_slots_json(
+    path: str,
+    valid_keys: Optional[frozenset[str]] = None,
+) -> tuple[str, ...]:
     """
     JSON 형식:
       { "slots": ["kick","snare", ...] }  또는  ["kick","snare", ...]
-    길이 10(양손×5손가락) 권장. 값은 drumkit_audio에 정의된 sound key여야 함.
+    길이 10(양손×5손가락). valid_keys가 None이면 드럼 kit_keys(), 피아노는 main에서 frozenset(kit) 넘김.
     """
     from drumkit_audio import kit_keys
 
-    valid = frozenset(kit_keys())
+    valid = valid_keys if valid_keys is not None else frozenset(kit_keys())
     p = Path(path)
     if not p.is_file():
         raise FileNotFoundError(path)

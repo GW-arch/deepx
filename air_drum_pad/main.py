@@ -16,7 +16,15 @@ import mediapipe as mp
 import numpy as np
 import pygame
 
-from drumkit_audio import build_kit, kit_keys
+from drumkit_audio import (
+    PIANO_DEFAULT_SLOTS,
+    build_kit,
+    build_piano_kit,
+    build_piano_kit_for_slots,
+    kit_keys,
+    load_piano_slots_json,
+    piano_kit_keys,
+)
 from strike_detector import (
     FINGER_ANGLE_CHAIN,
     FINGER_LABELS,
@@ -71,6 +79,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="사용 가능한 sound key 목록 출력 후 종료",
     )
+    p.add_argument(
+        "--piano",
+        action="store_true",
+        help="피아노 모드: 음명(C4 등) 합성음, 손가락 10슬롯에 도레미 매핑",
+    )
     return p.parse_args()
 
 
@@ -96,17 +109,35 @@ def draw_finger_chain(
 def main() -> int:
     args = parse_args()
     if args.list_instruments:
-        print(" ".join(kit_keys()))
+        if args.piano:
+            print(" ".join(piano_kit_keys()))
+        else:
+            print(" ".join(kit_keys()))
         return 0
 
     pygame.init()
-    kit = build_kit()
-    sound_mapper = None
-    if args.instruments.strip():
-        slots = load_instrument_slots_json(args.instruments.strip())
+    slots: tuple[str, ...] | None = None
+    if args.piano:
+        if args.instruments.strip():
+            slots = load_piano_slots_json(args.instruments.strip())
+            kit = build_piano_kit_for_slots(slots)
+        else:
+            slots = tuple(PIANO_DEFAULT_SLOTS)
+            kit = build_piano_kit()
         sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
             h, lm, max_hands=mh, sound_slots=s
         )
+    else:
+        kit = build_kit()
+        sound_mapper = None
+        if args.instruments.strip():
+            slots = load_instrument_slots_json(
+                args.instruments.strip(),
+                valid_keys=frozenset(kit.keys()),
+            )
+            sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
+                h, lm, max_hands=mh, sound_slots=s
+            )
 
     det = InstrumentStrikeDetector(
         vy_trigger=args.vy_trigger,
@@ -135,8 +166,9 @@ def main() -> int:
 
     fps_t0 = time.perf_counter()
     frames = 0
+    mode = "piano" if args.piano else "drum"
     print(
-        "Air-Drum: q=quit | tip↓speed + joint motion → hit | (손,손가락)→악기",
+        f"Air-Drum [{mode}]: q=quit | tip↓ + joint motion → hit | (손,손가락)→음",
         flush=True,
     )
 
@@ -225,7 +257,8 @@ def main() -> int:
                     cv2.LINE_AA,
                 )
 
-            cv2.imshow("AI Air-Drum (kinematic)", frame)
+            title = "AI Air-Drum (piano)" if args.piano else "AI Air-Drum (drum)"
+            cv2.imshow(title, frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
                 break
     finally:
