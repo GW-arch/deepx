@@ -1,0 +1,5 @@
+# AI Air-Drum Pad — Orange Pi / Ubuntu ARM64 prototype
+opencv-python>=4.8
+mediapipe>=0.10.9
+pygame>=2.5
+numpy>=1.26,<2.1
