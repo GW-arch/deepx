@@ -1,2 +1,3 @@
 palm_decode_smoke.png
 models/vendor/palm_detection_lite.onnx
+models/vendor/palm_detection_lite.dxnn

@@ -1,21 +1,30 @@
 {
   "input": {
-    "tensor_layout": "nhwc",
+    "tensor_name": "input_1",
+    "tensor_layout": "nchw",
     "color_order": "rgb",
     "square_pad": false,
     "normalize": {
-      "mode": "scale_255",
-      "dtype": "float32"
+      "mode": "div255_in_npu",
+      "dtype": "float32",
+      "note": "Div(x=255) baked into NPU graph — feed 0-255 float input"
     },
     "height": 192,
     "width": 192
   },
   "outputs": {
+    "boxes_tensor_name": "Identity",
+    "scores_tensor_name": "Identity_1",
     "boxes_tensor_index": 0,
     "scores_tensor_index": 1,
     "num_boxes": 2016,
     "num_coords": 18,
     "num_keypoints": 7,
     "score_thresh": 0.5
+  },
+  "task_graph": {
+    "npu_tasks": 1,
+    "cpu_tasks": 2,
+    "note": "NPU runs conv backbone, CPU concat for regressor/classifier outputs"
   }
 }

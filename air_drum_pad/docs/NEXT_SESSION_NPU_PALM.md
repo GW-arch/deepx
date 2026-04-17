@@ -1,8 +1,19 @@
 # 다음 세션 실험 가이드 — Palm + Hand NPU 파이프라인
 
-## 2026-04-17 세션 #2 결과
+## 2026-04-17 세션 #3 결과
 
 - **커밋:** TBD (`main`)
+- **완료:**
+  - DX-COM 컴파일 성공 — SNU 서버(user12, taskset -c 12,13, opt_level 1)
+  - `models/vendor/palm_detection_lite.dxnn` — 4.7 MB, .dxnn v8, DX-COM v2.1.0-rc.4
+  - `parse_model` 확인: input `input_1` NCHW, outputs `Identity`(boxes) + `Identity_1`(scores)
+  - 1 NPU task + 2 CPU tasks (concat), 48.5 MB memory, Div(x=255) NPU 내장
+  - `models/dxnn_layout.mediapipe_palm_lite.json` 최종 확정 (nchw, div255 baked)
+  - Phase 3 DX-COM 체크박스 완료 — PLAN 전 항목 ✓
+
+## 2026-04-17 세션 #2 결과
+
+- **커밋:** 948cfdf (`main`)
 - **완료:**
   - Phase 1 단위 테스트 — `tools/test_palm_decode.py` 20/20 통과 (MediaPipe Hands wrist 비교 포함)
   - Phase 3 ONNX 변환 — `tools/dequant_palm_fp32.py`: flatc JSON 라운드트립으로 FP16→FP32 디퀀트 + DEQUANTIZE op 제거 → `tflite2onnx` 성공
@@ -77,8 +88,8 @@ python3 tools/palm_letterbox.py --camera 0   # 카메라 있을 때
 ## Step E — ONNX / `.dxnn`
 
 - ✅ Palm ONNX: `tools/dequant_palm_fp32.py`로 변환 성공. 경로: `models/vendor/palm_detection_lite.onnx` (NCHW [1,3,192,192]).
-- ⬜ `dx_com`으로 `.dxnn` 빌드 — **BLOCKED**: DX-COM 미설치 + SNU 서버 비밀번호 필요.
-- ⬜ `parse_model -m palm_detection_lite.dxnn`으로 입출력 기록 → 레이아웃 JSON 최종 확정.
+- ✅ `dx_com`으로 `.dxnn` 빌드 완료 — SNU 서버 user12, `tools/compile_server_snu.sh`.
+- ✅ `parse_model -m palm_detection_lite.dxnn` 확인 → 레이아웃 JSON 최종 확정 (`models/dxnn_layout.mediapipe_palm_lite.json`).
 
 ---
 

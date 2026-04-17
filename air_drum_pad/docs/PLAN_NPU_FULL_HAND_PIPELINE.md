@@ -58,7 +58,7 @@ flowchart LR
 ### Phase 3 — Palm `.dxnn`
 
 - [x] ONNX 변환: `tools/dequant_palm_fp32.py` — flatc JSON 라운드트립으로 FP16→FP32 디퀀트 + DEQUANTIZE op 제거 → `tflite2onnx` 성공. `models/vendor/palm_detection_lite.onnx` (NCHW, 3.9 MB). TFLite 대비 max_diff=0.000122.
-- [ ] `dx_com`으로 `palm_detection_lite.dxnn` 빌드, `parse_model`로 입출력 확인. ⚠️ **BLOCKED**: DX-COM 미설치(install.sh에 자격증명 필요), SNU 컴파일 서버(43.203.143.33:443) 비밀번호 필요.
+- [x] `dx_com`으로 `palm_detection_lite.dxnn` 빌드 완료 (SNU 서버 user12, opt_level 1). `parse_model` 확인: input `input_1` NCHW, outputs `Identity`(boxes) + `Identity_1`(scores), 1 NPU + 2 CPU tasks, 48.5 MB. Div(x=255) NPU 내장.
 - [x] `models/dxnn_layout.mediapipe_palm_lite.json` 초안.
 
 ### Phase 4 — 통합 트래커
