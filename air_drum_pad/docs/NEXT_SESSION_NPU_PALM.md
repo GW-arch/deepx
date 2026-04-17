@@ -5,11 +5,14 @@
 - **커밋:** 82aab86 (`main`) — `FullNpuHandsTracker` 가 `palm_dxnn_path` / `palm_tflite_path` 둘 다 지원
   - `--palm-dxnn` CLI 플래그 추가 (`main.py`)
   - `create_tracker()` 자동 탐색: `.dxnn` → `.tflite` 우선순위
-  - Palm NPU 벤치마크: **12.2 ms** (vs TFLite CPU 95.1 ms) — ~8× 빠름
-  - Full pipeline (no detection): NPU 7.3 ms vs TFLite 43.1 ms — ~6× 빠름
-  - `_run_palm()` .dxnn 경로: NHWC [0,1] → ×255 → NCHW [0,255] 변환 후 `dx_engine.InferenceEngine.run()`
+  - Palm .dxnn 레이턴시: **12 ms** (vs TFLite CPU 95 ms) — 속도는 ~8× 빠름
+  - **그러나 Palm .dxnn INT8 양자화로 score head 파괴** — ONNX↔NPU score 상관 -0.11, max sigmoid 0.01 vs ONNX 0.90
+  - 시도한 조합: ema/minmax calibration, `--aggressive_partitioning` (0 CPU groups), `--opt_level 0`/`1` — 모두 실패
+  - **결론: Palm detection은 TFLite (CPU, float32) 로 고정**, Hand landmark만 NPU
+  - `_run_palm()` .dxnn 경로: NHWC uint8 입력 → `dx_engine.InferenceEngine.run()`
   - `close()` 에서 `palm_ie.dispose()` 호출
-  - README.md 업데이트 — 백엔드 테이블 + npu-full 예시에 `--palm-dxnn` 추가
+  - 디스플레이 `cv2.flip(frame, 1)` 추가 (셀카 미러)
+  - `os.chdir(_SCRIPT_DIR)` 추가 (상대 경로 안정화)
 
 ## 2026-04-17 세션 #3 결과
 
@@ -121,4 +124,4 @@ python3 tools/palm_letterbox.py --camera 0   # 카메라 있을 때
 
 ## 한 줄 요약
 
-**다음 세션:** Step D(`palm_decode.py` 완성) → 검증(시각화 또는 수치) → Step E(ONNX/`.dxnn`) 순으로 진행하면 됩니다.
+**현재 상태:** Phase 0~6 완료. Palm detection은 INT8 양자화 실패로 **TFLite (CPU)** 로 고정, Hand landmark는 **NPU (.dxnn)** 로 실행. `--backend npu-full --palm-tflite …` 가 실사용 구성입니다.

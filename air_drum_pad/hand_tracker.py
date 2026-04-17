@@ -568,8 +568,9 @@ class FullNpuHandsTracker:
         from palm_letterbox import rgb_uint8_to_palm_input_tensor  # noqa: F811
 
         self._max_hands = max(1, int(max_hands))
-        self._palm_score_thresh = palm_score_thresh
         self._palm_backend: str  # "dxnn" | "tflite"
+        # .dxnn 양자화 → score 저하 보정: TFLite 기본 0.5, .dxnn 기본 0.3
+        self._palm_score_thresh: float
 
         # --- Palm model init ---
         if palm_dxnn_path:
@@ -580,6 +581,7 @@ class FullNpuHandsTracker:
             from dx_engine import InferenceEngine
             self._palm_ie: Any = InferenceEngine(str(p))
             self._palm_backend = "dxnn"
+            self._palm_score_thresh = palm_score_thresh if palm_score_thresh != 0.5 else 0.3
             self._palm_intr = None
         elif palm_tflite_path:
             # CPU palm via TFLite
@@ -603,6 +605,7 @@ class FullNpuHandsTracker:
             self._palm_inp = self._palm_intr.get_input_details()[0]
             self._palm_outs = self._palm_intr.get_output_details()
             self._palm_backend = "tflite"
+            self._palm_score_thresh = palm_score_thresh
             self._palm_ie = None
         else:
             raise ValueError("palm_dxnn_path 또는 palm_tflite_path 중 하나를 지정하세요.")
@@ -637,10 +640,10 @@ class FullNpuHandsTracker:
         tensor, meta = self._rgb_to_palm(rgb)
 
         if self._palm_backend == "dxnn":
-            # .dxnn expects NCHW float32 with 0-255 range (Div(255) baked in NPU)
-            t_255 = (tensor * 255.0).astype(np.float32)  # (1, 192, 192, 3) → 0-255
-            t_nchw = np.ascontiguousarray(t_255.transpose(0, 3, 1, 2))  # → (1, 3, 192, 192)
-            raw_outputs: list[np.ndarray] = self._palm_ie.run([t_nchw])
+            # DX-COM compiled to NHWC uint8 [0,255] — convert from [0,1] float tensor
+            t_u8 = (tensor[0] * 255.0).clip(0, 255).astype(np.uint8)  # (192,192,3)
+            t_u8 = np.expand_dims(t_u8, axis=0)  # (1,192,192,3)
+            raw_outputs: list[np.ndarray] = self._palm_ie.run([t_u8])
         else:
             # TFLite path
             inp_dtype = self._palm_inp["dtype"]
@@ -762,7 +765,7 @@ def create_tracker(
         elif palm_tflite and palm_tflite.strip():
             resolved_palm_tflite = palm_tflite.strip()
         else:
-            # Auto-detect: prefer .dxnn, fall back to .tflite
+            # Auto-detect: prefer .dxnn (NPU), fall back to .tflite (CPU)
             base = Path(__file__).resolve().parent / "models" / "vendor"
             default_dxnn = base / "palm_detection_lite.dxnn"
             default_tflite = base / "palm_detection_lite.tflite"

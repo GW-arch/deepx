@@ -1,17 +1,33 @@
-# 손 랜드마크 → ONNX → `.dxnn` (NPU)
+# 모델 파이프라인: Palm Detection + Hand Landmark → NPU
 
 이 디렉터리는 **레이아웃 JSON**과 문서를 두고, 실제 **TFLite / ONNX / .dxnn** 대용량 파일은 기본적으로 `vendor/`에 두며(`.gitignore`로 onnx 등 생략 가능) 필요 시 스크립트로 생성합니다.
 
 ## 한 줄 요약
 
-1. **Google MediaPipe 공개 TFLite** (`hand_landmark_lite.tflite` 등) 다운로드  
-2. **`tflite2onnx`** 로 ONNX 변환 (`tools/export_mediapipe_hand_onnx.py`)  
-3. **DX-COM**(DEEPX SDK)으로 `.dxnn` 컴파일 — `tools/compile_dxnn.sh` 또는 DX-AllSuite 문서의 명령  
-4. 보드에서 **`python3 main.py --backend npu --dxnn … --dxnn-layout …`**
+1. **Google MediaPipe 공개 TFLite** (`hand_landmark_lite.tflite`, `palm_detection_lite.tflite`) 다운로드  
+2. **`tflite2onnx`** 로 ONNX 변환 (`tools/export_mediapipe_hand_onnx.py`, `tools/export_mediapipe_palm_onnx.py`)  
+3. **DX-COM**(DEEPX SDK)으로 `.dxnn` 컴파일 — `tools/compile_server_snu.sh all` 또는 `tools/compile_dxnn.sh`  
+4. 보드에서 **`python3 main.py --backend npu-full --palm-tflite … --dxnn … --dxnn-layout …`**
 
-MediaPipe **앱 전체**가 아니라, 그 안의 **손 랜드마크 신경망 파일**을 ONNX로 옮긴 뒤 DXNN으로 빌드하는 흐름입니다.
+MediaPipe **앱 전체**가 아니라, 그 안의 **신경망 파일**을 ONNX로 옮긴 뒤 DXNN으로 빌드하는 흐름입니다.
 
-**Palm 검출까지 NPU로** 올리는 로드맵·전처리 상수·export 스모크는 [`docs/PLAN_NPU_FULL_HAND_PIPELINE.md`](../docs/PLAN_NPU_FULL_HAND_PIPELINE.md) 와 `tools/export_mediapipe_palm_onnx.py`, `tools/palm_mp_spec.py`, `tools/palm_letterbox.py` 를 참고하세요.
+## 파이프라인 구조 (`npu-full` 백엔드)
+
+```
+카메라 프레임 (RGB)
+  ├─ Palm Detection (TFLite, CPU float32)  ← 192×192 NHWC
+  │    └─ 2016 SSD anchors → NMS → palm bounding box
+  ├─ ROI crop + letterbox → 224×224 패치
+  └─ Hand Landmark (.dxnn, NPU int8)       ← 224×224 NHWC uint8
+       └─ 21 keypoints + handedness + score
+```
+
+Palm detection은 **TFLite (CPU)** 로 실행합니다. INT8 양자화 시 score head가 파괴되어 NPU .dxnn은 사용 불가합니다 (box head는 정상, score head correlation -0.11). Hand landmark는 **NPU .dxnn** 으로 실행합니다.
+
+> **왜 양자화가 필요한가?** DeepX NPU 하드웨어는 **INT8 연산만 지원**하는 고정 기능 가속기입니다. NPU로 실행하려면 반드시 float32→INT8 양자화가 필요합니다. 양자화 없이 float32로 돌리려면 CPU(TFLite)를 써야 합니다. NPU의 장점은 속도(INT8 conv를 ARM CPU 대비 ~10-50x 빠르게 처리)이므로, **정확도가 살아있는 모델은 NPU로, 양자화에 취약한 모델은 CPU로** 나누는 하이브리드가 최선입니다.
+
+Palm detection → ONNX export·전처리 상수·SSD anchor 디코딩은 `tools/export_mediapipe_palm_onnx.py`, `tools/palm_mp_spec.py`, `tools/palm_letterbox.py`, `tools/palm_decode.py` 를 참고하세요.  
+계획 문서: [`docs/PLAN_NPU_FULL_HAND_PIPELINE.md`](../docs/PLAN_NPU_FULL_HAND_PIPELINE.md)
 
 ## 1) ONNX 만들기 (호스트)
 
@@ -50,14 +66,26 @@ cd air_drum_pad
 export DX_COMPILE_USER=user12
 # 권장: ssh-copy-id 로 공개키 등록 후 비밀번호 없이 접속
 # 또는: echo '비밀번호한줄' > ~/.snupass && chmod 600 ~/.snupass && export DX_COMPILE_PASSFILE=~/.snupass
+
+# Hand landmark 컴파일 (기본)
 ./tools/compile_server_snu.sh all
+
+# Palm detection 컴파일 (참고용 — 양자화 문제로 현재 TFLite 사용)
+DX_COMPILE_PASSFILE=/tmp/.snupass \
+  COMPILE_ONNX=models/vendor/palm_detection_lite.onnx \
+  COMPILE_JSON=models/dxcom/palm_detection_lite.json \
+  COMPILE_OUT_NAME=palm_detection_lite.dxnn \
+  bash tools/compile_server_snu.sh all
 ```
 
 레이아웃 JSON(`models/dxnn_layout.mediapipe_hand_lite*.json`)은 **`parse_model -m …`로 확인한 출력 순서**에 맞춥니다.  
 MediaPipe 손 ONNX→DX-COM 결과가 흔히 **`Identity` [1,63] 랜드마크 + `Identity_1`/`Identity_2` 스칼라** 형태이므로, 기본 레이아웃은 `landmarks_tensor_index: 0` 과 `outputs.coordinate_space: "letterbox_patch_pixels"`(224 패치 픽셀→원본 RGB 정규화 역변환)을 씁니다.  
 이미 정규화된 다른 텐서만 쓰는 컴파일본이면 `coordinate_space` 를 `"normalized"` 로 두고 `landmarks_tensor_index` 만 바꾸면 됩니다.
 
-DX-COM용 보정 전처리는 `models/dxcom/hand_landmark_lite.json` (서버 `~/sample` 과 동일 내용)을 사용합니다.
+DX-COM용 보정 설정:
+- `models/dxcom/hand_landmark_lite.json` — hand landmark 모델 (서버 `~/sample` 과 동일)
+- `models/dxcom/palm_detection_lite.json` — palm detection 모델 (ema calibration)
+- `models/dxcom/palm_detection_lite_minmax.json` — palm detection 모델 (minmax calibration)
 
 ### aarch64 보드(Orange Pi 등)
 
@@ -83,8 +111,17 @@ export DX_COM='dx_com --your-flags-here'   # 예시 — 실제 플래그는 DEEP
 ```bash
 export DXNN=/path/to/hand_landmark_lite.dxnn
 ./scripts/run_npu_piano.sh
-# 또는
-python3 main.py --backend npu --dxnn "$DXNN" --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json --max-hands 2 --piano --camera 0
+# 또는 (npu-full: palm TFLite + hand NPU)
+python3 main.py --backend npu-full \
+  --palm-tflite models/vendor/palm_detection_lite.tflite \
+  --dxnn "$DXNN" \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
+  --max-hands 2 --piano --camera 0
+# npu 백엔드 (dual-halves, palm detection 없음)
+python3 main.py --backend npu \
+  --dxnn "$DXNN" \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json \
+  --max-hands 2 --piano --camera 0
 ```
 
 모델 정보 확인: `parse_model -m ./hand_landmark_lite.dxnn` (DX-RT 도구).
@@ -99,8 +136,21 @@ python3 main.py --backend npu --dxnn "$DXNN" --dxnn-layout models/dxnn_layout.me
 | `outputs.landmarks_tensor_index` | 63 floats 랜드마크 텐서 인덱스 |
 | `confidence.tensor_index` | 손 존재 점수(예: MediaPipe ONNX의 두 번째 출력). `null`이면 게이트 없음 |
 
-## 한계 (손바닥 검출)
+## 한계 (양자화와 palm detection)
 
-`palm_detection_full.tflite` → ONNX 는 **연산 호환** 문제로 `tflite2onnx` 가 실패하는 경우가 많습니다.  
-현재 NPU 경로는 **손 랜드마크 단일 모델**만 지원하며, 양손은 **`dual_horizontal_halves`** 로 **근사**합니다.  
-전체 MediaPipe와 동일한 ROI·레터박스를 쓰려면 palm + crop 파이프라인을 별도 ONNX/CPU로 붙이는 추가 작업이 필요합니다.
+Palm detection ONNX export는 `tools/export_mediapipe_palm_onnx.py` 로 정상 동작합니다. 그러나 DX-COM INT8 양자화 시 **score head가 파괴**됩니다:
+
+| 출력 | ONNX↔NPU 상관 | 비고 |
+|------|---------------|------|
+| Box (2016×18) | 0.81 | 정상 |
+| Score (2016×1) | -0.11 | **파괴** — max sigmoid 0.01 vs ONNX 0.90 |
+
+시도한 조합:
+- `ema` / `minmax` calibration method
+- `--aggressive_partitioning` (1 NPU group, 0 CPU groups)
+- `--opt_level 0` / `--opt_level 1`
+- 다양한 입력 포맷 (NHWC uint8, NCHW float32)
+
+모두 score head가 복구되지 않았습니다. 원인은 score head의 동적 범위(~[-20, +3])가 INT8 256레벨로 표현하기에 너무 좁기 때문으로 추정됩니다.
+
+**현재 해법**: Palm detection은 **TFLite (CPU, float32)** 로 실행하고, Hand landmark만 **NPU (.dxnn, int8)** 로 실행하는 하이브리드 구성을 사용합니다. `--backend npu-full --palm-tflite models/vendor/palm_detection_lite.tflite` 로 지정합니다.

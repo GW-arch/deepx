@@ -8,10 +8,16 @@ from __future__ import annotations
 
 import argparse
 import math
+import os
 import sys
 import time
 from pathlib import Path
 from collections import defaultdict, deque
+
+# Resolve relative paths against the script's own directory so that
+# default model paths like "models/vendor/…" work from any cwd.
+_SCRIPT_DIR = Path(__file__).resolve().parent
+os.chdir(_SCRIPT_DIR)
 
 import cv2
 import numpy as np
@@ -365,3 +371,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+Also: the palm .dxnn recompilation with hand-specific calibration data just finished successfully and was downloaded to palm_detection_lite.dxnn. Want me to test the new .dxnn quality next?
+

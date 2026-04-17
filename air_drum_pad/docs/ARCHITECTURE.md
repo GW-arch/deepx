@@ -3,7 +3,7 @@
 **프로젝트명:** NPU 기반 초저지연 Hand Landmark Tracking을 활용한 AI Air-Drum Pad  
 **문서 버전:** 1.0  
 **대상 플랫폼:** DeepX M1 키트(Ubuntu 22.04, SBC + NPU + USB 카메라 + 디스플레이)  
-**참고 구현:** 이 모노레포 `git@github.com:GW-arch/deepx.git` ([웹](https://github.com/GW-arch/deepx)) 의 `air_drum_pad/` Python 프로토타입(CPU/MediaPipe)
+**참고 구현:** 이 모노레포 `git@github.com:GW-arch/deepx.git` ([웹](https://github.com/GW-arch/deepx)) 의 `air_drum_pad/` Python 프로토타입(CPU/MediaPipe + NPU/DX-RT 하이브리드)
 
 ---
 
@@ -44,14 +44,20 @@
 | 로직 | C++ 권장 |
 | 오디오 | ALSA 저버퍼 또는 JACK |
 
-**프로토타입:** `main.py`(MediaPipe), `strike_detector.py`, `drumkit_audio.py`(pygame)
+**프로토타입:** `main.py`(CPU/NPU 백엔드), `hand_tracker.py`(Palm TFLite CPU + Hand .dxnn NPU 하이브리드), `strike_detector.py`, `drumkit_audio.py`(pygame)
 
 ---
 
 ## 5. NPU 모델
 
-- **주 모델:** MediaPipe 계열 **Hand Landmark**(21 keypoints), ONNX → INT8 → .dxnn  
-- **보조(선택):** Palm/Hand **Detector** — 추적 실패 시에만 재실행(캐스케이드)
+- **주 모델:** MediaPipe 계열 **Hand Landmark**(21 keypoints), ONNX → INT8 → .dxnn — **NPU 실행**
+- **Palm Detection:** TFLite **CPU 실행** (float32) — INT8 양자화 시 score head 파괴로 NPU 불가
+- Palm → ROI crop → Hand landmark → 21 keypoints 순서의 2단 파이프라인
+
+| 모델 | 입력 | 실행 위치 | 양자화 | 비고 |
+|------|------|-----------|--------|------|
+| Palm Detection | 192×192 NHWC float32 | CPU (TFLite) | 없음 (float32) | INT8 score head 파괴 |
+| Hand Landmark | 224×224 NHWC uint8 | **NPU** (.dxnn) | INT8 PTQ | 정상 동작 |
 
 ---
 
@@ -65,4 +71,6 @@
 
 ## 7. 문서 참조
 
-- 실험 절차: `docs/EXPERIMENTS.md`
+- 실험 절차·벤치마크: `docs/EXPERIMENTS.md`
+- NPU 파이프라인 계획: `docs/PLAN_NPU_FULL_HAND_PIPELINE.md`
+- 모델 빌드·양자화 한계: `models/README.md`

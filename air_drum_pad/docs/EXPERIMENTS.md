@@ -79,79 +79,25 @@
 
 ### 8.2 Palm Detection — NPU (.dxnn) vs CPU (TFLite)
 
-**재현 방법:**
+> **결론:** Palm .dxnn은 속도는 빠르나 INT8 양자화로 **score head가 파괴**되어 (ONNX↔NPU 상관 -0.11) 실제 손 감지가 불가합니다. 아래 레이턴시 수치는 참고용이며, **실사용은 TFLite (CPU)** 입니다.
 
-```bash
-cd ~/deepx/air_drum_pad
-python3 -c "
-import sys, time, cv2, numpy as np
-sys.path.insert(0, 'tools')
-from hand_tracker import FullNpuHandsTracker
+**Palm Detection 레이턴시 (참고):**
 
-hand_dxnn = 'models/vendor/hand_landmark_lite.dxnn'
-hand_layout = 'models/dxnn_layout.mediapipe_hand_lite.json'
+| Palm 백엔드 | 추론 시간 | 비고 |
+|-------------|----------:|------|
+| NPU (.dxnn) | ~12 ms | score 파괴로 **사용 불가** |
+| CPU (TFLite XNNPACK) | ~95 ms | **실사용** (float32, 정확) |
 
-# NPU palm
-t_npu = FullNpuHandsTracker(
-    palm_dxnn_path='models/vendor/palm_detection_lite.dxnn',
-    hand_dxnn_path=hand_dxnn, hand_layout_path=hand_layout, max_hands=2)
+### 8.3 npu-full End-to-End
 
-# TFLite palm
-t_tfl = FullNpuHandsTracker(
-    palm_tflite_path='models/vendor/palm_detection_lite.tflite',
-    hand_dxnn_path=hand_dxnn, hand_layout_path=hand_layout, max_hands=2)
-t_npu._ensure_imports(); t_tfl._ensure_imports()
+실사용 구성 (Palm TFLite CPU + Hand .dxnn NPU):
 
-cap = cv2.VideoCapture(0)
-cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
-for _ in range(5): cap.read()
-_, frame = cap.read(); cap.release()
-rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+| 조건 | 시간 | 손 수 | 비고 |
+|------|-----:|------:|------|
+| Palm TFLite + Hand .dxnn | ~99 ms | 2 | palm이 병목 (~95 ms) |
+| 손 미감지 시 | ~95 ms | 0 | palm detection만 실행 |
 
-# Warm up
-for _ in range(3): t_npu.process(rgb); t_tfl.process(rgb)
-
-# Timed runs
-for label, tracker in [('NPU', t_npu), ('TFL', t_tfl)]:
-    times = []
-    for _ in range(10):
-        t0 = time.perf_counter()
-        tracker.process(rgb)
-        times.append((time.perf_counter() - t0) * 1000)
-    print(f'{label}: avg={np.mean(times):.1f}ms min={np.min(times):.1f}ms max={np.max(times):.1f}ms')
-t_npu.close(); t_tfl.close()
-"
-```
-
-**결과 (2026-04-17, commit `99f838d`):**
-
-| 측정 대상 | Palm NPU (.dxnn) | Palm CPU (TFLite XNNPACK) | 배수 |
-|-----------|----------------:|------------------------:|-----:|
-| Palm detection only | **12.2 ms** | 95.1 ms | ~8× |
-| Full pipeline (palm+hand, 10-frame avg) | **7.3 ms** | 43.1 ms | ~6× |
-| Full pipeline min | 6.8 ms | 40.5 ms | — |
-| Full pipeline max | 8.0 ms | 45.0 ms | — |
-
-> **Note:** "Full pipeline" 시간이 "palm only" 보다 짧은 이유: 손이 감지되지 않은 프레임에서는
-> hand landmark 추론이 스킵되므로 palm detection 이 거의 전부.
-> 캐시 워밍업 후 palm NPU 추론 자체는 ~7 ms 수준.
-
-### 8.3 npu-full End-to-End (손 감지 시)
-
-이전 세션 (#1, TFLite palm + NPU hand):
-
-| 조건 | 시간 | 손 수 |
-|------|-----:|------:|
-| Palm TFLite + Hand .dxnn | 99.4 ms | 2 |
-
-현재 세션 (#4, NPU palm + NPU hand):
-
-| 조건 | 시간 (추정) | 비고 |
-|------|----------:|------|
-| Palm .dxnn + Hand .dxnn | ~20–30 ms | palm 12ms + hand ~8ms/hand + CPU glue |
-
-> 실제 2-hand 감지 시 벤치마크는 다음 세션에서 카메라 앞 손 촬영으로 측정 예정.
+> Palm이 CPU 병목이므로, 전체 파이프라인은 ~100 ms/frame (약 10 FPS). `npu` (dual-halves) 백엔드는 ~16 ms/frame로 훨씬 빠르지만 palm 검출 없이 화면 반분할 근사입니다.
 
 ---
 

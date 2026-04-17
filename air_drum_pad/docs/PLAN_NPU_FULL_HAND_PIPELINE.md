@@ -70,19 +70,23 @@ flowchart LR
 
 - [x] README 업데이트: `npu-full` 사용법, 도구 목록, 구현 현황 → PLAN 체크박스로 이전.
 
-### Phase 6 — Palm NPU 통합
+### Phase 6 — Palm NPU 통합 (속도 확인, 양자화 품질 실패)
 
 - [x] `FullNpuHandsTracker` 에 `palm_dxnn_path` 지원 — `dx_engine.InferenceEngine` 로 NPU 추론.
-- [x] 전처리: letterbox NHWC [0,1] → ×255 → NCHW [0,255] (Div(255) NPU 내장).
+- [x] 전처리: letterbox NHWC [0,1] → ×255 → uint8 (Div(255) NPU 내장).
 - [x] `create_tracker()` 자동 탐색: `.dxnn` → `.tflite` 우선순위.
 - [x] `--palm-dxnn` CLI 플래그 (`main.py`).
-- [x] 벤치마크: Palm NPU 12 ms vs TFLite CPU 95 ms (~8× 개선). Full pipeline: NPU 7.3 ms vs TFL 43.1 ms.
+- [x] 벤치마크: Palm NPU 12 ms vs TFLite CPU 95 ms (~8× 속도 개선).
+- [x] **양자화 품질 검증: score head 파괴 확인** — ONNX↔NPU score 상관 -0.11, box 상관 0.81.
+  - ema / minmax calibration, `--aggressive_partitioning` (0 CPU groups), opt_level 0/1 모두 실패.
+  - **최종 결론: Palm .dxnn은 사용 불가. TFLite (CPU, float32) 고정.**
 
 ## 리스크·메모
 
-- **`tflite2onnx`로 palm Tflite 변환**: 현재 보드에서 **IndexError 등으로 실패**할 수 있음 → Phase 3에서 다른 변환기 필수일 수 있음.
-- **Palm Tflite**: `pip show mediapipe` 설치 경로의 `mediapipe/modules/palm_detection/palm_detection_lite.tflite` (스크립트가 자동 복사).
-- **DX-COM**: Palm 그래프에 **커스텀 op / FP16** 등이 있으면 컴파일 제약이 있을 수 있음 — 컴파일 로그로 op 단위 확인.
+- **Palm INT8 양자화 실패 (확정):** DX-COM으로 palm_detection_lite.onnx를 INT8 양자화하면 **score head가 파괴**됩니다 (ONNX↔NPU score 상관 -0.11, max sigmoid 0.01). Box head는 정상 (상관 0.81). ema/minmax calibration, `--aggressive_partitioning`, opt_level 0/1 모든 조합에서 실패. 원인: score head의 좁은 동적 범위 (~[-20, +3]) 가 INT8 256레벨로 표현 불가. **Palm은 TFLite (CPU, float32)로 고정.**
+- **`tflite2onnx`로 palm TFLite 변환**: `tools/dequant_palm_fp32.py`로 FP16→FP32 디퀀트 후 변환 성공.
+- **Palm TFLite**: `pip show mediapipe` 설치 경로의 `mediapipe/modules/palm_detection/palm_detection_lite.tflite` (스크립트가 자동 복사).
+- **DX-COM**: SNU 서버 (user12, port 443) 에서 컴파일. aarch64 보드에서는 직접 컴파일 불가.
 
 ## 참고 링크
 

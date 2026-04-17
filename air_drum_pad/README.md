@@ -39,49 +39,69 @@
 ```bash
 cd air_drum_pad
 pip3 install -r requirements.txt
-python3 main.py --camera 0
-# 피아노:
-# python3 main.py --piano --camera 0
 ```
 
 **sudo password: `deepx123!`**
 
-### CPU vs NPU (손 추론)
+### 빠른 실행 (모드별)
 
-| `--backend` | 설명 |
-|-------------|------|
-| `cpu` (기본) | MediaPipe Hands |
-| `npu` | DX-RT `.dxnn` + `dx_engine` (레이아웃 JSON) — hand landmark만 NPU, palm 검출 없음(dual-halves 근사) |
-| `npu-full` | Palm detection + Hand landmark — 전부 NPU `.dxnn` (또는 palm만 TFLite CPU 폴백) — 정식 2-hand 파이프라인 |
+```bash
+# ── 1) CPU 기본 (추가 모델 불필요) ──
+python3 main.py --camera 0
 
-**npu-full 예시 (전부 NPU):**
+# 피아노:
+python3 main.py --piano --camera 0
+
+# ── 2) NPU-full: Palm(CPU TFLite) + Hand(NPU .dxnn) — 정식 파이프라인 ──
+python3 main.py --backend npu-full --piano --camera 0 \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
+  --palm-tflite models/vendor/palm_detection_lite.tflite
+
+# ── 3) NPU dual-halves: 화면 반분할 근사 (가장 빠름, palm 없음) ──
+python3 main.py --backend npu --piano --camera 0 \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json
+```
+
+> **스크립트로 실행:** `scripts/run_cpu_piano.sh` 또는 `scripts/run_npu_piano.sh` 를 사용하면 환경변수(`DISPLAY`, `XAUTHORITY`)를 자동으로 설정합니다.
+
+### CPU vs CPU+NPU 비교
+
+#### 백엔드별 모델 실행 위치
+
+| `--backend` | Palm Detection | Hand Landmark | 비고 |
+|-------------|----------------|---------------|------|
+| `cpu` (기본) | CPU (MediaPipe 내장) | CPU (MediaPipe 내장) | 추가 파일 불필요, float32 |
+| `npu` | 없음 (dual-halves 근사) | **NPU** (.dxnn, int8) | palm 검출 없이 화면 좌우 반분할 |
+| `npu-full` | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 정식 2-hand 파이프라인 |
+
+> **왜 palm은 CPU인가?** Palm detection .dxnn을 INT8 양자화하면 score head가 파괴됩니다 (ONNX↔NPU 상관 -0.11). DeepX NPU는 INT8 전용 가속기이므로 float32 실행이 불가능합니다. 따라서 palm은 TFLite(CPU, float32)로, hand landmark만 NPU(int8)로 실행하는 하이브리드가 최선입니다. 자세한 분석: [`models/README.md`](models/README.md).
+
+#### 성능 비교
+
+| 구성 | Palm 추론 | Hand 추론 (per hand) | 전체 (2 hands) | 비고 |
+|------|----------:|---------------------:|---------------:|------|
+| `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | 모두 float32 |
+| `npu-full` (TFLite palm + NPU hand) | ~95 ms | ~8 ms | ~111 ms | palm이 병목 |
+| `npu` (dual-halves) | 0 ms | ~8 ms × 2 | ~16 ms | palm 검출 없음, 근사 |
+
+> `npu-full`은 palm detection CPU 오버헤드가 크지만, 정식 ROI 기반 추적이므로 정확도가 높습니다. `npu`는 가장 빠르지만 palm 검출 없이 화면을 반으로 나누는 근사입니다.
+
+#### npu-full 사용 예시
 
 ```bash
 python3 main.py --backend npu-full \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
-  --palm-dxnn models/vendor/palm_detection_lite.dxnn \
-  --max-hands 2
-```
-
-`--palm-dxnn` / `--palm-tflite` 생략 시 자동 탐색 순서: `.dxnn` → `.tflite` (둘 다 `models/vendor/`).
-
-**CPU 폴백 (palm만 TFLite):**
-
-```bash
-python3 main.py --backend npu-full \
-  --dxnn models/vendor/hand_landmark_lite.dxnn \
   --palm-tflite models/vendor/palm_detection_lite.tflite \
   --max-hands 2
 ```
 
-| Palm 모델 | 경로 플래그 | 추론 장치 | Palm 전용 레이턴시 |
-|-----------|------------|-----------|-------------------|
-| `.dxnn` | `--palm-dxnn` | NPU | ~12 ms |
-| `.tflite` | `--palm-tflite` | CPU (XNNPACK) | ~95 ms |
+`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. `--palm-dxnn` 플래그도 존재하나 양자화 품질 문제로 **사용 비권장**.
 
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
-요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (로컬 `tools/compile_dxnn.sh` 또는 SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu --dxnn …`.
+요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu-full --palm-tflite … --dxnn …`.
 
 **`dx_engine`은 반드시 보드의 DX-RT와 맞는 빌드**를 쓰세요. 오래된 wheel만 설치하면 `InferenceEngine`이 멈추거나 힙 오류가 날 수 있습니다. 설치 절차는 `requirements-npu.txt` 주석을 따르면 됩니다.
 
@@ -135,7 +155,7 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | 파일 | 역할 |
 |------|------|
 | `main.py` | 카메라, 손 추적(`--backend`), 관절선·손끝 궤적 표시 |
-| `hand_tracker.py` | CPU(MediaPipe) / NPU(DX-RT `.dxnn`) 랜드마크 |
+| `hand_tracker.py` | CPU(MediaPipe) / NPU(DX-RT `.dxnn`) 백엔드 — Palm TFLite(CPU) + Hand .dxnn(NPU) 하이브리드 포함 |
 | `strike_detector.py` | `InstrumentStrikeDetector` — 손끝 속도 + 관절 각속도 |
 | `drumkit_audio.py` | 16종 합성 샘플, 손가락 슬롯에 매핑 |
 | `tools/export_mediapipe_hand_onnx.py` | 공개 TFLite → ONNX + 레이아웃 생성 |
