@@ -50,20 +50,33 @@ python3 main.py --camera 0
 |-------------|------|
 | `cpu` (기본) | MediaPipe Hands |
 | `npu` | DX-RT `.dxnn` + `dx_engine` (레이아웃 JSON) — hand landmark만 NPU, palm 검출 없음(dual-halves 근사) |
-| `npu-full` | Palm detection (TFLite CPU) → ROI warp → Hand landmark (.dxnn NPU) — 정식 2-hand 파이프라인 |
+| `npu-full` | Palm detection + Hand landmark — 전부 NPU `.dxnn` (또는 palm만 TFLite CPU 폴백) — 정식 2-hand 파이프라인 |
 
-**npu-full 예시:**
+**npu-full 예시 (전부 NPU):**
 
 ```bash
 python3 main.py --backend npu-full \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
+  --palm-dxnn models/vendor/palm_detection_lite.dxnn \
+  --max-hands 2
+```
+
+`--palm-dxnn` / `--palm-tflite` 생략 시 자동 탐색 순서: `.dxnn` → `.tflite` (둘 다 `models/vendor/`).
+
+**CPU 폴백 (palm만 TFLite):**
+
+```bash
+python3 main.py --backend npu-full \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
   --palm-tflite models/vendor/palm_detection_lite.tflite \
   --max-hands 2
 ```
 
-`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색.  
-Palm TFLite가 없으면 `python3 tools/export_mediapipe_palm_onnx.py --variant lite` 로 생성.
+| Palm 모델 | 경로 플래그 | 추론 장치 | Palm 전용 레이턴시 |
+|-----------|------------|-----------|-------------------|
+| `.dxnn` | `--palm-dxnn` | NPU | ~12 ms |
+| `.tflite` | `--palm-tflite` | CPU (XNNPACK) | ~95 ms |
 
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
 요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (로컬 `tools/compile_dxnn.sh` 또는 SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu --dxnn …`.

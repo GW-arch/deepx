@@ -548,17 +548,17 @@ class DxnnHandTracker:
 
 
 class FullNpuHandsTracker:
-    """Palm detection (TFLite CPU) → ROI warp → Hand landmark (.dxnn NPU or TFLite CPU).
+    """Palm detection → ROI warp → Hand landmark.
 
-    Palm detection 은 현재 TFLite (CPU) 로 실행하며, 향후 palm .dxnn 이 빌드되면
-    NPU 로 교체할 수 있다.  Hand landmark 는 기존 DxnnHandTracker 와 동일한
-    .dxnn 을 사용한다.
+    Palm 은 .dxnn (NPU) 또는 TFLite (CPU) 중 하나로 실행.
+    Hand landmark 는 기존 DxnnHandTracker 와 동일한 .dxnn 을 사용한다.
     """
 
     def __init__(
         self,
         *,
-        palm_tflite_path: str,
+        palm_tflite_path: Optional[str] = None,
+        palm_dxnn_path: Optional[str] = None,
         hand_dxnn_path: str,
         hand_layout_path: Optional[str],
         max_hands: int,
@@ -569,27 +569,44 @@ class FullNpuHandsTracker:
 
         self._max_hands = max(1, int(max_hands))
         self._palm_score_thresh = palm_score_thresh
+        self._palm_backend: str  # "dxnn" | "tflite"
 
-        # Palm model (TFLite CPU)
-        self._palm_tflite = Path(palm_tflite_path)
-        if not self._palm_tflite.is_file():
-            raise FileNotFoundError(f"Palm TFLite not found: {palm_tflite_path}")
-        try:
-            import tensorflow as tf
-            self._Interpreter = tf.lite.Interpreter
-        except ImportError:
+        # --- Palm model init ---
+        if palm_dxnn_path:
+            # NPU palm via dx_engine
+            p = Path(palm_dxnn_path)
+            if not p.is_file():
+                raise FileNotFoundError(f"Palm .dxnn not found: {palm_dxnn_path}")
+            from dx_engine import InferenceEngine
+            self._palm_ie: Any = InferenceEngine(str(p))
+            self._palm_backend = "dxnn"
+            self._palm_intr = None
+        elif palm_tflite_path:
+            # CPU palm via TFLite
+            p = Path(palm_tflite_path)
+            if not p.is_file():
+                raise FileNotFoundError(f"Palm TFLite not found: {palm_tflite_path}")
             try:
-                import tflite_runtime.interpreter as tflite
-                self._Interpreter = tflite.Interpreter
+                import tensorflow as tf
+                _Interpreter = tf.lite.Interpreter
             except ImportError:
-                raise ImportError(
-                    "FullNpuHandsTracker 의 palm detection 에 tensorflow 또는 "
-                    "tflite_runtime 이 필요합니다."
-                )
-        self._palm_intr = self._Interpreter(model_path=str(self._palm_tflite))
-        self._palm_intr.allocate_tensors()
-        self._palm_inp = self._palm_intr.get_input_details()[0]
-        self._palm_outs = self._palm_intr.get_output_details()
+                try:
+                    import tflite_runtime.interpreter as tflite
+                    _Interpreter = tflite.Interpreter
+                except ImportError:
+                    raise ImportError(
+                        "FullNpuHandsTracker 의 palm detection (TFLite) 에 tensorflow 또는 "
+                        "tflite_runtime 이 필요합니다."
+                    )
+            self._palm_intr = _Interpreter(model_path=str(p))
+            self._palm_intr.allocate_tensors()
+            self._palm_inp = self._palm_intr.get_input_details()[0]
+            self._palm_outs = self._palm_intr.get_output_details()
+            self._palm_backend = "tflite"
+            self._palm_ie = None
+        else:
+            raise ValueError("palm_dxnn_path 또는 palm_tflite_path 중 하나를 지정하세요.")
+
         self._anchors = generate_ssd_anchors()
 
         # Hand landmark model (DxnnHandTracker)
@@ -616,16 +633,25 @@ class FullNpuHandsTracker:
             self._inv_lm = inverse_landmark_transform
 
     def _run_palm(self, rgb: np.ndarray):
-        """Run palm detection, return (K, 19) detections + letterbox meta."""
+        """Run palm detection, return (K, 19) detections."""
         tensor, meta = self._rgb_to_palm(rgb)
-        inp_dtype = self._palm_inp["dtype"]
-        if inp_dtype in (np.float32, "float32"):
-            tensor = tensor.astype(np.float32)
-        elif inp_dtype in (np.uint8, "uint8"):
-            tensor = (tensor * 255.0).clip(0, 255).astype(np.uint8)
-        self._palm_intr.set_tensor(self._palm_inp["index"], tensor)
-        self._palm_intr.invoke()
-        raw_outputs = [self._palm_intr.get_tensor(o["index"]) for o in self._palm_outs]
+
+        if self._palm_backend == "dxnn":
+            # .dxnn expects NCHW float32 with 0-255 range (Div(255) baked in NPU)
+            t_255 = (tensor * 255.0).astype(np.float32)  # (1, 192, 192, 3) → 0-255
+            t_nchw = np.ascontiguousarray(t_255.transpose(0, 3, 1, 2))  # → (1, 3, 192, 192)
+            raw_outputs: list[np.ndarray] = self._palm_ie.run([t_nchw])
+        else:
+            # TFLite path
+            inp_dtype = self._palm_inp["dtype"]
+            if inp_dtype in (np.float32, "float32"):
+                tensor = tensor.astype(np.float32)
+            elif inp_dtype in (np.uint8, "uint8"):
+                tensor = (tensor * 255.0).clip(0, 255).astype(np.uint8)
+            self._palm_intr.set_tensor(self._palm_inp["index"], tensor)
+            self._palm_intr.invoke()
+            raw_outputs = [self._palm_intr.get_tensor(o["index"]) for o in self._palm_outs]
+
         dets = self._decode(
             raw_outputs, self._anchors,
             letterbox_meta=meta,
@@ -693,6 +719,9 @@ class FullNpuHandsTracker:
 
     def close(self) -> None:
         self._hand_tracker.close()
+        if self._palm_ie is not None:
+            self._palm_ie.dispose()
+            self._palm_ie = None
         self._palm_intr = None
 
 
@@ -704,6 +733,7 @@ def create_tracker(
     dxnn_path: str,
     dxnn_layout: Optional[str],
     palm_tflite: Optional[str] = None,
+    palm_dxnn: Optional[str] = None,
 ) -> HandTracker:
     b = backend.strip().lower()
     if b == "cpu":
@@ -722,18 +752,33 @@ def create_tracker(
     if b in ("npu-full", "npu_full"):
         if not dxnn_path or not dxnn_path.strip():
             raise SystemExit("npu-full 백엔드는 --dxnn (hand landmark) 경로가 필요합니다.")
-        if not palm_tflite or not palm_tflite.strip():
-            # Auto-detect default path
-            default_palm = Path(__file__).resolve().parent / "models" / "vendor" / "palm_detection_lite.tflite"
-            if default_palm.is_file():
-                palm_tflite = str(default_palm)
+
+        # Resolve palm model: prefer .dxnn (NPU), fall back to TFLite (CPU)
+        resolved_palm_dxnn: Optional[str] = None
+        resolved_palm_tflite: Optional[str] = None
+
+        if palm_dxnn and palm_dxnn.strip():
+            resolved_palm_dxnn = palm_dxnn.strip()
+        elif palm_tflite and palm_tflite.strip():
+            resolved_palm_tflite = palm_tflite.strip()
+        else:
+            # Auto-detect: prefer .dxnn, fall back to .tflite
+            base = Path(__file__).resolve().parent / "models" / "vendor"
+            default_dxnn = base / "palm_detection_lite.dxnn"
+            default_tflite = base / "palm_detection_lite.tflite"
+            if default_dxnn.is_file():
+                resolved_palm_dxnn = str(default_dxnn)
+            elif default_tflite.is_file():
+                resolved_palm_tflite = str(default_tflite)
             else:
                 raise SystemExit(
-                    "npu-full 백엔드는 --palm-tflite 경로가 필요합니다. "
-                    f"(기본 경로 {default_palm} 없음)"
+                    "npu-full 백엔드: --palm-dxnn 또는 --palm-tflite 을 지정하거나 "
+                    f"{default_dxnn} 또는 {default_tflite} 을 배치하세요."
                 )
+
         return FullNpuHandsTracker(
-            palm_tflite_path=palm_tflite.strip(),
+            palm_dxnn_path=resolved_palm_dxnn,
+            palm_tflite_path=resolved_palm_tflite,
             hand_dxnn_path=dxnn_path.strip(),
             hand_layout_path=dxnn_layout,
             max_hands=max_hands,

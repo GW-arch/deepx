@@ -114,7 +114,14 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="",
         metavar="PATH",
-        help="npu-full 백엔드: palm detection TFLite 경로 (기본: models/vendor/palm_detection_lite.tflite)",
+        help="npu-full 백엔드: palm detection TFLite 경로 (CPU 폴백)",
+    )
+    p.add_argument(
+        "--palm-dxnn",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="npu-full 백엔드: palm detection .dxnn 경로 (NPU, 기본: models/vendor/palm_detection_lite.dxnn 자동탐색)",
     )
     return p.parse_args()
 
@@ -208,6 +215,7 @@ def main() -> int:
         dxnn_path=args.dxnn,
         dxnn_layout=args.dxnn_layout if args.dxnn_layout.strip() else None,
         palm_tflite=args.palm_tflite if args.palm_tflite.strip() else None,
+        palm_dxnn=args.palm_dxnn if args.palm_dxnn.strip() else None,
     )
 
     fps_t0 = time.perf_counter()

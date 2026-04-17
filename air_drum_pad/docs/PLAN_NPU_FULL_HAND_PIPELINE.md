@@ -70,6 +70,14 @@ flowchart LR
 
 - [x] README 업데이트: `npu-full` 사용법, 도구 목록, 구현 현황 → PLAN 체크박스로 이전.
 
+### Phase 6 — Palm NPU 통합
+
+- [x] `FullNpuHandsTracker` 에 `palm_dxnn_path` 지원 — `dx_engine.InferenceEngine` 로 NPU 추론.
+- [x] 전처리: letterbox NHWC [0,1] → ×255 → NCHW [0,255] (Div(255) NPU 내장).
+- [x] `create_tracker()` 자동 탐색: `.dxnn` → `.tflite` 우선순위.
+- [x] `--palm-dxnn` CLI 플래그 (`main.py`).
+- [x] 벤치마크: Palm NPU 12 ms vs TFLite CPU 95 ms (~8× 개선). Full pipeline: NPU 7.3 ms vs TFL 43.1 ms.
+
 ## 리스크·메모
 
 - **`tflite2onnx`로 palm Tflite 변환**: 현재 보드에서 **IndexError 등으로 실패**할 수 있음 → Phase 3에서 다른 변환기 필수일 수 있음.
