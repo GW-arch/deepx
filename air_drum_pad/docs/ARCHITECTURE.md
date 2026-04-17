@@ -44,7 +44,7 @@
 | 로직 | C++ 권장 |
 | 오디오 | ALSA 저버퍼 또는 JACK |
 
-**프로토타입:** `main.py`(CPU/NPU 백엔드), `hand_tracker.py`(Palm TFLite CPU + Hand .dxnn NPU 하이브리드), `strike_detector.py`, `drumkit_audio.py`(pygame)
+**프로토타입:** `main.py`(CPU/CPU-baseline/NPU 백엔드), `hand_tracker.py`(MediaPipe / Palm+Hand TFLite CPU / Palm TFLite CPU + Hand .dxnn NPU 하이브리드), `strike_detector.py`, `drumkit_audio.py`(pygame)
 
 ---
 
@@ -58,8 +58,18 @@
 |------|------|-----------|--------|------|
 | Palm Detection | 192×192 NHWC float32 | CPU (TFLite) | 없음 (float32) | INT8 score head 파괴 |
 | Hand Landmark | 224×224 NHWC uint8 | **NPU** (.dxnn) | INT8 PTQ | 정상 동작 |
+| Hand Landmark | 224×224 NHWC float32 | CPU (TFLite) | 없음 (float32) | `cpu-baseline` 백엔드용 |
 
-**Palm Skip (트래킹 최적화):** MediaPipe와 동일하게, 이전 프레임의 랜드마크로 다음 ROI를 예측하여 palm detection을 매 프레임 실행하지 않습니다. 5프레임에 1회만 palm을 재실행하고, 트래킹 실패 시 즉시 re-detection합니다. 이로써 `npu-full` 모드의 평균 프레임 시간이 ~111ms → ~16ms로 개선됩니다.
+**Palm Detection (매 프레임):** `npu-full` 및 `cpu-baseline` 모드에서 palm detection을 **매 프레임** 실행합니다. 이전에는 landmark 기반 ROI 트래킹으로 5프레임에 1번만 palm을 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 ROI 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01). `_PALM_REDETECT_EVERY = 0` (항상 실행).
+
+**백엔드 비교:**
+
+| `--backend` | Palm Detection | Hand Landmark | 전체 (2 hands) | 비고 |
+|-------------|----------------|---------------|---------------:|------|
+| `cpu` | MediaPipe 내장 | MediaPipe 내장 | ~35 ms | float32 |
+| `cpu-baseline` | CPU TFLite float32 | CPU TFLite float32 | ~105 ms | NPU 없이 동일 파이프라인 (비교 기준선) |
+| `npu-full` | CPU TFLite float32 | **NPU** .dxnn int8 | ~111 ms | 정식 파이프라인 |
+| `npu` | 없음 (dual-halves) | **NPU** .dxnn int8 | ~16 ms | palm 없음, 근사 |
 
 ---
 

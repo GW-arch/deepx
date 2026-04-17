@@ -98,8 +98,8 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         type=str,
         default="cpu",
-        choices=("cpu", "npu", "npu-full"),
-        help="손 추론: cpu=MediaPipe, npu=DX-RT .dxnn (--dxnn 필수), npu-full=palm TFLite + hand .dxnn",
+        choices=("cpu", "cpu-baseline", "npu", "npu-full"),
+        help="손 추론: cpu=MediaPipe, cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, npu-full=palm TFLite + hand .dxnn",
     )
     p.add_argument(
         "--dxnn",
@@ -128,6 +128,13 @@ def parse_args() -> argparse.Namespace:
         default="",
         metavar="PATH",
         help="npu-full 백엔드: palm detection .dxnn 경로 (NPU, 기본: models/vendor/palm_detection_lite.dxnn 자동탐색)",
+    )
+    p.add_argument(
+        "--hand-tflite",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="cpu-baseline 백엔드: hand landmark TFLite 경로 (기본: models/vendor/hand_landmark_lite.tflite 자동탐색)",
     )
     return p.parse_args()
 
@@ -222,6 +229,7 @@ def main() -> int:
         dxnn_layout=args.dxnn_layout if args.dxnn_layout.strip() else None,
         palm_tflite=args.palm_tflite if args.palm_tflite.strip() else None,
         palm_dxnn=args.palm_dxnn if args.palm_dxnn.strip() else None,
+        hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
     )
 
     fps_t0 = time.perf_counter()

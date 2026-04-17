@@ -7,18 +7,20 @@
 1. **Google MediaPipe 공개 TFLite** (`hand_landmark_lite.tflite`, `palm_detection_lite.tflite`) 다운로드  
 2. **`tflite2onnx`** 로 ONNX 변환 (`tools/export_mediapipe_hand_onnx.py`, `tools/export_mediapipe_palm_onnx.py`)  
 3. **DX-COM**(DEEPX SDK)으로 `.dxnn` 컴파일 — `tools/compile_server_snu.sh all` 또는 `tools/compile_dxnn.sh`  
-4. 보드에서 **`python3 main.py --backend npu-full --palm-tflite … --dxnn … --dxnn-layout …`**
+4. 보드에서 **`python3 main.py --backend npu-full --palm-tflite … --dxnn … --dxnn-layout …`** 또는 **`python3 main.py --backend cpu-baseline`** (모델 자동 탐색)
 
 MediaPipe **앱 전체**가 아니라, 그 안의 **신경망 파일**을 ONNX로 옮긴 뒤 DXNN으로 빌드하는 흐름입니다.
 
-## 파이프라인 구조 (`npu-full` 백엔드)
+## 파이프라인 구조 (`npu-full` / `cpu-baseline` 백엔드)
 
 ```
 카메라 프레임 (RGB)
   ├─ Palm Detection (TFLite, CPU float32)  ← 192×192 NHWC
   │    └─ 2016 SSD anchors → NMS → palm bounding box
   ├─ ROI crop + letterbox → 224×224 패치
-  └─ Hand Landmark (.dxnn, NPU int8)       ← 224×224 NHWC uint8
+  └─ Hand Landmark                          ← 224×224 NHWC
+       ├─ npu-full: .dxnn (NPU int8, uint8 입력)
+       ├─ cpu-baseline: TFLite (CPU float32, float32 입력)
        └─ 21 keypoints + handedness + score
 ```
 
@@ -117,6 +119,8 @@ python3 main.py --backend npu-full \
   --dxnn "$DXNN" \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
   --max-hands 2 --piano --camera 0
+# cpu-baseline: palm TFLite + hand TFLite (모두 CPU, 비교 기준선)
+python3 main.py --backend cpu-baseline --max-hands 2 --piano --camera 0
 # npu 백엔드 (dual-halves, palm detection 없음)
 python3 main.py --backend npu \
   --dxnn "$DXNN" \

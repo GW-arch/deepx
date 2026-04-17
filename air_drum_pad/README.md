@@ -52,13 +52,16 @@ python3 main.py --camera 0
 # 피아노:
 python3 main.py --piano --camera 0
 
-# ── 2) NPU-full: Palm(CPU TFLite) + Hand(NPU .dxnn) — 정식 파이프라인 ──
+# ── 2) CPU-baseline: Palm(CPU TFLite) + Hand(CPU TFLite) — NPU 없이 동일 파이프라인 ──
+python3 main.py --backend cpu-baseline --piano --camera 0
+
+# ── 3) NPU-full: Palm(CPU TFLite) + Hand(NPU .dxnn) — 정식 파이프라인 ──
 python3 main.py --backend npu-full --piano --camera 0 \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
   --palm-tflite models/vendor/palm_detection_lite.tflite
 
-# ── 3) NPU dual-halves: 화면 반분할 근사 (가장 빠름, palm 없음) ──
+# ── 4) NPU dual-halves: 화면 반분할 근사 (가장 빠름, palm 없음) ──
 python3 main.py --backend npu --piano --camera 0 \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json
@@ -73,6 +76,7 @@ python3 main.py --backend npu --piano --camera 0 \
 | `--backend` | Palm Detection | Hand Landmark | 비고 |
 |-------------|----------------|---------------|------|
 | `cpu` (기본) | CPU (MediaPipe 내장) | CPU (MediaPipe 내장) | 추가 파일 불필요, float32 |
+| `cpu-baseline` | CPU (TFLite, float32) | CPU (TFLite, float32) | NPU 없이 npu-full과 동일 파이프라인 (비교 기준선) |
 | `npu` | 없음 (dual-halves 근사) | **NPU** (.dxnn, int8) | palm 검출 없이 화면 좌우 반분할 |
 | `npu-full` | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 정식 2-hand 파이프라인 |
 
@@ -83,10 +87,26 @@ python3 main.py --backend npu --piano --camera 0 \
 | 구성 | Palm 추론 | Hand 추론 (per hand) | 전체 (2 hands) | 비고 |
 |------|----------:|---------------------:|---------------:|------|
 | `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | 모두 float32 |
-| `npu-full` (TFLite palm + NPU hand) | ~95 ms (첫 프레임) | ~8 ms | **~16 ms** (트래킹 시) | palm skip으로 대부분 ~16ms |
+| `cpu-baseline` (TFLite palm + TFLite hand) | ~95 ms | ~5 ms | ~105 ms | 모두 float32, 비교 기준선 |
+| `npu-full` (TFLite palm + NPU hand) | ~95 ms | ~8 ms | ~111 ms | 매 프레임 palm 실행 |
 | `npu` (dual-halves) | 0 ms | ~8 ms × 2 | ~16 ms | palm 검출 없음, 근사 |
 
-> **npu-full 트래킹 최적화**: MediaPipe와 동일하게, 이전 프레임 랜드마크에서 ROI를 예측하여 palm detection을 5프레임에 1번만 실행합니다. 트래킹 중에는 NPU hand landmark만 돌리므로 ~16ms/frame (2 hands)로 동작합니다. 손을 잃으면 자동으로 palm re-detection을 실행합니다.
+> **npu-full은 매 프레임 palm detection을 실행합니다.** 이전에는 landmark 기반 ROI 트래킹으로 palm을 5프레임에 1번만 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01).
+
+#### cpu-baseline 사용 예시
+
+```bash
+# TFLite 모델 자동 탐색 (models/vendor/ 내)
+python3 main.py --backend cpu-baseline --max-hands 2
+
+# 명시적 경로 지정
+python3 main.py --backend cpu-baseline \
+  --palm-tflite models/vendor/palm_detection_lite.tflite \
+  --hand-tflite models/vendor/hand_landmark_lite.tflite \
+  --max-hands 2
+```
+
+> `cpu-baseline`은 `npu-full`과 동일한 파이프라인(palm detection → ROI crop → hand landmark)을 **모두 CPU TFLite**로 실행합니다. NPU 가속 효과를 정확히 비교할 수 있는 기준선입니다.
 
 #### npu-full 사용 예시
 
@@ -155,7 +175,7 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | 파일 | 역할 |
 |------|------|
 | `main.py` | 카메라, 손 추적(`--backend`), 관절선·손끝 궤적 표시 |
-| `hand_tracker.py` | CPU(MediaPipe) / NPU(DX-RT `.dxnn`) 백엔드 — Palm TFLite(CPU) + Hand .dxnn(NPU) 하이브리드 포함 |
+| `hand_tracker.py` | CPU(MediaPipe) / CPU-baseline(TFLite) / NPU(DX-RT `.dxnn`) 백엔드 — Palm TFLite(CPU) + Hand .dxnn(NPU) 또는 TFLite(CPU) |
 | `strike_detector.py` | `InstrumentStrikeDetector` — 손끝 속도 + 관절 각속도 |
 | `drumkit_audio.py` | 16종 합성 샘플, 손가락 슬롯에 매핑 |
 | `tools/export_mediapipe_hand_onnx.py` | 공개 TFLite → ONNX + 레이아웃 생성 |

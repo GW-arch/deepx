@@ -124,4 +124,6 @@ python3 tools/palm_letterbox.py --camera 0   # 카메라 있을 때
 
 ## 한 줄 요약
 
-**현재 상태:** Phase 0~6 완료. Palm detection은 INT8 양자화 실패로 **TFLite (CPU)** 로 고정, Hand landmark는 **NPU (.dxnn)** 로 실행. `--backend npu-full --palm-tflite …` 가 실사용 구성입니다.
+**현재 상태:** Phase 0~7 완료. Palm detection은 INT8 양자화 실패로 **TFLite (CPU)** 로 고정, Hand landmark는 **NPU (.dxnn)** 로 실행. `cpu-baseline` 백엔드 추가 — NPU 없이 동일 파이프라인을 CPU TFLite로 실행하는 비교 기준선. `_PALM_REDETECT_EVERY = 0` (매 프레임 palm 실행, ROI 드리프트 제거).
+
+`--backend npu-full --palm-tflite …` 가 실사용 구성입니다. `--backend cpu-baseline`은 NPU 없이 비교용입니다.

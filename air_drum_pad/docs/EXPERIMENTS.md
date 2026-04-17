@@ -88,15 +88,18 @@
 | NPU (.dxnn) | ~12 ms | score 파괴로 **사용 불가** |
 | CPU (TFLite XNNPACK) | ~95 ms | **실사용** (float32, 정확) |
 
-### 8.3 npu-full End-to-End
+### 8.3 End-to-End 레이턴시 비교
 
-실사용 구성 (Palm TFLite CPU + Hand .dxnn NPU):
+| 백엔드 | Palm | Hand (per hand) | 전체 (2 hands) | 비고 |
+|---------|-----:|----------------:|---------------:|------|
+| `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | 모두 float32, 추가 파일 불필요 |
+| `cpu-baseline` (TFLite) | ~95 ms | ~5 ms | **~105 ms** | float32, npu-full 비교 기준선 |
+| `npu-full` (TFLite+NPU) | ~95 ms | ~8 ms | **~111 ms** | 매 프레임 palm 실행 |
+| `npu` (dual-halves) | 0 ms | ~8 ms × 2 | **~16 ms** | palm 검출 없음, 근사 |
 
-| 조건 | 시간 | 손 수 | 비고 |
-|------|-----:|------:|------|
-| Palm re-detection 프레임 | ~99 ms | 2 | palm이 병목 (~95 ms) |
-| **트래킹 프레임 (palm skip)** | **~16 ms** | 2 | NPU hand landmark만 실행 |
-| 손 미감지 시 | ~95 ms | 0 | palm detection만 실행 |
+> **npu-full / cpu-baseline**: 매 프레임 palm detection을 실행합니다 (`_PALM_REDETECT_EVERY = 0`). 이전에는 landmark 기반 ROI 트래킹으로 palm skip(5프레임에 1번)을 사용했으나, NPU INT8 양자화 편향 누적으로 ROI 드리프트(최대 dy=0.26)가 발생하여 비활성화했습니다.
+> 
+> **cpu-baseline vs npu-full**: 동일 파이프라인이지만 hand landmark를 CPU TFLite(float32) vs NPU .dxnn(INT8)로 실행. palm이 전체 시간의 ~90%를 차지하므로 NPU 가속 효과는 hand landmark 단독으로 비교해야 합니다 (~5ms TFLite vs ~8ms NPU).
 
 > **Palm skip 최적화**: 이전 프레임 랜드마크에서 다음 ROI를 예측하여 palm detection을 5프레임에 1회만 실행합니다. 트래킹 중에는 NPU hand landmark만 돌리므로 대부분의 프레임에서 ~16ms로 동작합니다. 트래킹 실패 시 자동으로 palm re-detection을 실행합니다.
 

@@ -599,6 +599,77 @@ class DxnnHandTracker:
             self._ie = None
 
 
+# --- CPU TFLite hand landmark (same interface as DxnnHandTracker) ---
+
+
+class TFLiteHandLandmark:
+    """Run hand_landmark_lite.tflite on CPU via TFLite runtime.
+
+    Accepts a 224×224 RGB patch, returns HandTrackingResult with 21 landmarks
+    in normalised [0,1] coordinates (same contract as DxnnHandTracker).
+    """
+
+    def __init__(self, model_path: str, *, max_hands: int = 1) -> None:
+        try:
+            import tensorflow as tf
+            _Interpreter = tf.lite.Interpreter
+        except ImportError:
+            try:
+                import tflite_runtime.interpreter as tflite
+                _Interpreter = tflite.Interpreter
+            except ImportError:
+                raise ImportError(
+                    "TFLiteHandLandmark requires tensorflow or tflite_runtime."
+                )
+        p = Path(model_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Hand landmark TFLite not found: {model_path}")
+        self._interp = _Interpreter(model_path=str(p))
+        self._interp.allocate_tensors()
+        self._inp = self._interp.get_input_details()[0]
+        self._outs = self._interp.get_output_details()
+        self._max_hands = max(1, int(max_hands))
+
+    def process(self, rgb: np.ndarray) -> HandTrackingResult:
+        """Run inference on a 224×224×3 RGB patch (uint8 or float).
+
+        Returns landmarks in normalised [0,1] coordinates within the patch.
+        """
+        h, w = rgb.shape[:2]
+        patch = cv2.resize(rgb, (224, 224), interpolation=cv2.INTER_LINEAR) if (h, w) != (224, 224) else rgb
+        inp_dtype = self._inp["dtype"]
+        if inp_dtype == np.float32:
+            tensor = patch.astype(np.float32) / 255.0
+        else:
+            tensor = patch.astype(inp_dtype)
+        tensor = np.expand_dims(tensor, axis=0)
+        self._interp.set_tensor(self._inp["index"], tensor)
+        self._interp.invoke()
+
+        # Output[0] = Identity [1,63] = 21 × (x,y,z) in patch pixel coords
+        lm_raw = self._interp.get_tensor(self._outs[0]["index"]).astype(np.float32).flatten()
+        # Output[1] = Identity_1 [1,1] = hand presence score (hand_flag)
+        hand_flag = float(self._interp.get_tensor(self._outs[1]["index"]).flatten()[0])
+
+        if hand_flag < 0.5:
+            return HandTrackingResult([], [])
+
+        # Convert pixel coords → normalised [0,1]
+        lm21 = []
+        for j in range(21):
+            x = float(lm_raw[j * 3 + 0]) / 224.0
+            y = float(lm_raw[j * 3 + 1]) / 224.0
+            z = float(lm_raw[j * 3 + 2]) / 224.0
+            lm21.append(_Lm(x, y, z))
+        hlm = _HandLms(tuple(lm21))
+        wx = hlm.landmark[0].x
+        lab = "Right" if wx < 0.5 else "Left"
+        return HandTrackingResult([hlm], [_Handedness(lab, hand_flag)])
+
+    def close(self) -> None:
+        self._interp = None
+
+
 # --- Full pipeline: Palm detection + Hand landmark (CPU TFLite + optional NPU) ---
 
 
@@ -606,7 +677,7 @@ class FullNpuHandsTracker:
     """Palm detection → ROI warp → Hand landmark.
 
     Palm 은 .dxnn (NPU) 또는 TFLite (CPU) 중 하나로 실행.
-    Hand landmark 는 기존 DxnnHandTracker 와 동일한 .dxnn 을 사용한다.
+    Hand landmark 는 DxnnHandTracker (.dxnn NPU) 또는 TFLiteHandLandmark (.tflite CPU).
     """
 
     def __init__(
@@ -614,7 +685,8 @@ class FullNpuHandsTracker:
         *,
         palm_tflite_path: Optional[str] = None,
         palm_dxnn_path: Optional[str] = None,
-        hand_dxnn_path: str,
+        hand_dxnn_path: Optional[str] = None,
+        hand_tflite_path: Optional[str] = None,
         hand_layout_path: Optional[str],
         max_hands: int,
         palm_score_thresh: float = 0.5,
@@ -667,12 +739,20 @@ class FullNpuHandsTracker:
 
         self._anchors = generate_ssd_anchors()
 
-        # Hand landmark model (DxnnHandTracker)
-        self._hand_tracker = DxnnHandTracker(
-            hand_dxnn_path,
-            layout_path=hand_layout_path,
-            max_hands=1,  # one hand per ROI
-        )
+        # Hand landmark model: prefer TFLite (CPU) if given, else .dxnn (NPU)
+        if hand_tflite_path:
+            self._hand_tracker = TFLiteHandLandmark(
+                hand_tflite_path,
+                max_hands=1,
+            )
+        elif hand_dxnn_path:
+            self._hand_tracker = DxnnHandTracker(
+                hand_dxnn_path,
+                layout_path=hand_layout_path,
+                max_hands=1,  # one hand per ROI
+            )
+        else:
+            raise ValueError("hand_dxnn_path 또는 hand_tflite_path 중 하나를 지정하세요.")
 
         # Stash callables for runtime (avoid repeated imports)
         self._rgb_to_palm = rgb_uint8_to_palm_input_tensor
@@ -881,6 +961,7 @@ def create_tracker(
     dxnn_layout: Optional[str],
     palm_tflite: Optional[str] = None,
     palm_dxnn: Optional[str] = None,
+    hand_tflite: Optional[str] = None,
 ) -> HandTracker:
     b = backend.strip().lower()
     if b == "cpu":
@@ -896,15 +977,29 @@ def create_tracker(
             layout_path=dxnn_layout,
             max_hands=max_hands,
         )
-    if b in ("npu-full", "npu_full"):
-        if not dxnn_path or not dxnn_path.strip():
-            raise SystemExit("npu-full 백엔드는 --dxnn (hand landmark) 경로가 필요합니다.")
 
-        # Resolve palm model: prefer .dxnn (NPU), fall back to TFLite (CPU)
+    if b in ("npu-full", "npu_full", "cpu-baseline", "cpu_baseline"):
+        # npu-full: palm TFLite(CPU) + hand .dxnn(NPU)
+        # cpu-baseline: palm TFLite(CPU) + hand TFLite(CPU)
+
+        # --- Resolve palm model ---
         resolved_palm_dxnn: Optional[str] = None
         resolved_palm_tflite: Optional[str] = None
 
-        if palm_dxnn and palm_dxnn.strip():
+        if b in ("cpu-baseline", "cpu_baseline"):
+            # cpu-baseline always uses TFLite palm
+            if palm_tflite and palm_tflite.strip():
+                resolved_palm_tflite = palm_tflite.strip()
+            else:
+                default_tflite = Path(__file__).resolve().parent / "models" / "vendor" / "palm_detection_lite.tflite"
+                if default_tflite.is_file():
+                    resolved_palm_tflite = str(default_tflite)
+                else:
+                    raise SystemExit(
+                        "cpu-baseline 백엔드: --palm-tflite 을 지정하거나 "
+                        f"{default_tflite} 을 배치하세요."
+                    )
+        elif palm_dxnn and palm_dxnn.strip():
             resolved_palm_dxnn = palm_dxnn.strip()
         elif palm_tflite and palm_tflite.strip():
             resolved_palm_tflite = palm_tflite.strip()
@@ -923,11 +1018,34 @@ def create_tracker(
                     f"{default_dxnn} 또는 {default_tflite} 을 배치하세요."
                 )
 
+        # --- Resolve hand landmark model ---
+        resolved_hand_dxnn: Optional[str] = None
+        resolved_hand_tflite: Optional[str] = None
+
+        if b in ("cpu-baseline", "cpu_baseline"):
+            # cpu-baseline always uses TFLite hand
+            if hand_tflite and hand_tflite.strip():
+                resolved_hand_tflite = hand_tflite.strip()
+            else:
+                default_hand = Path(__file__).resolve().parent / "models" / "vendor" / "hand_landmark_lite.tflite"
+                if default_hand.is_file():
+                    resolved_hand_tflite = str(default_hand)
+                else:
+                    raise SystemExit(
+                        "cpu-baseline 백엔드: --hand-tflite 을 지정하거나 "
+                        f"{default_hand} 을 배치하세요."
+                    )
+        else:
+            if not dxnn_path or not dxnn_path.strip():
+                raise SystemExit("npu-full 백엔드는 --dxnn (hand landmark) 경로가 필요합니다.")
+            resolved_hand_dxnn = dxnn_path.strip()
+
         return FullNpuHandsTracker(
             palm_dxnn_path=resolved_palm_dxnn,
             palm_tflite_path=resolved_palm_tflite,
-            hand_dxnn_path=dxnn_path.strip(),
+            hand_dxnn_path=resolved_hand_dxnn,
+            hand_tflite_path=resolved_hand_tflite,
             hand_layout_path=dxnn_layout,
             max_hands=max_hands,
         )
-    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | npu | npu-full)")
+    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | npu | npu-full)")

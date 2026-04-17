@@ -70,6 +70,16 @@ flowchart LR
 
 - [x] README 업데이트: `npu-full` 사용법, 도구 목록, 구현 현황 → PLAN 체크박스로 이전.
 
+### Phase 7 — cpu-baseline 백엔드
+
+- [x] `TFLiteHandLandmark` 클래스 (`hand_tracker.py`): `hand_landmark_lite.tflite` TFLite 랩퍼 (CPU, float32). 224×224 RGB 패치 → 21 keypoints.
+- [x] `create_tracker('cpu-baseline')`: `FullNpuHandsTracker` 에 `hand_tflite_path` 전달, palm+hand 모두 CPU TFLite.
+- [x] `main.py --backend cpu-baseline` + `--hand-tflite` CLI 플래그.
+- [x] 테스트: 2 hands, ~105ms, wrist 좌표 npu-full과 유사.
+- [x] 모든 문서 업데이트 (README, ARCHITECTURE, EXPERIMENTS, models/README, PLAN, NEXT_SESSION).
+
+> `cpu-baseline`은 `npu-full`과 동일한 파이프라인(palm → ROI → hand landmark)을 **모두 CPU TFLite (float32)** 로 실행합니다. NPU 가속 효과를 정확히 비교할 수 있는 기준선입니다.
+
 ### Phase 6 — Palm NPU 통합 (속도 확인, 양자화 품질 실패)
 
 - [x] `FullNpuHandsTracker` 에 `palm_dxnn_path` 지원 — `dx_engine.InferenceEngine` 로 NPU 추론.
