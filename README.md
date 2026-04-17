@@ -39,5 +39,5 @@ python3 main.py --camera 0
 - `sites.google.com/view/dxs-2603-snu` (DEEPX)
 
 ## Compile Server
-ssh user12@43.203.143.33 -p 443
-pw: snu*npu&&
+- `ssh user12@43.203.143.33 -p 443`
+- `pw: snu*npu&&`
