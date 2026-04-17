@@ -44,6 +44,8 @@ python3 main.py --camera 0
 # python3 main.py --piano --camera 0
 ```
 
+**sudo password: `deepx123!`**
+
 ### CPU vs NPU (손 추론)
 
 | `--backend` | 설명 |

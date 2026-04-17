@@ -36,8 +36,9 @@ python3 tools/export_mediapipe_hand_onnx.py --variant lite --dual-halves-layout
 
 | 항목 | 값 |
 |------|-----|
-| SSH | `ssh -p 443 <userN>@43.203.143.33` |
+| SSH | `ssh -p 443 user12@43.203.143.33` |
 | SCP | `scp -P 443 …` (대문자 **P**) |
+| PWD | `snu*npu&&` |
 | 샘플 ONNX/JSON | 서버 `~/sample/` |
 | 컴파일 결과 | 서버 `~/output/*.dxnn` |
 | 컴파일 명령 | `taskset -c N,N+1 dx_com -m <onnx> -c <json> -o ~/output` — **userN 이면 N,N+1** (예: user12 → `taskset -c 12,13`) |
