@@ -203,6 +203,55 @@ PIANO_DEFAULT_SLOTS: tuple[str, ...] = (
 )
 
 
+def midi_to_note_name(midi: int) -> str:
+    """MIDI 번호 → 음명 (샵 표기)."""
+    pc = midi % 12
+    octave = midi // 12 - 1
+    sharp = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
+    return f"{sharp[pc]}{octave}"
+
+
+def pentatonic_five(root_midi: int) -> tuple[str, ...]:
+    """메이저 펜타토닉 5음 (엄지→소지 높아지는 순)."""
+    offs = (0, 2, 4, 7, 9)
+    return tuple(midi_to_note_name(root_midi + o) for o in offs)
+
+
+def piano_slots_from_inter_hand_distance(
+    wrist_dist_norm: float,
+    *,
+    center_midi: int = 60,
+) -> tuple[str, ...]:
+    """
+    양손 손목 거리(정규화 좌표, 대략 0~1.4)로 음역을 나눔.
+    - 가까우면: 양손 모두 중음역에 가깝게(겹침)
+    - 멀면: 왼손은 더 낮게, 오른손은 더 높게(역할 분리)
+    반환: [왼손 5음] + [오른손 5음] — sound_key_for_finger(hand_slot=0|1, finger)와 맞춤.
+    """
+    # 손목 거리: 매우 가깝 ~0.06, 팔 벌림 ~0.55+
+    t = (wrist_dist_norm - 0.06) / 0.44
+    t = max(0.0, min(1.0, t))
+    # 벌릴수록 반음 "간격" 증가 → 양손 루트 시프트
+    spread = 4 + int(round(t * 22))  # 4..26 semitones between left/right region centers
+
+    root_l = center_midi - spread // 2 - 5
+    root_r = center_midi + spread // 2 + 3
+    root_l = int(max(36, min(58, root_l)))
+    root_r = int(max(52, min(78, root_r)))
+    # 오른손이 왼손보다 반드시 높게
+    if root_r <= root_l + 8:
+        root_r = root_l + 9
+
+    left = pentatonic_five(root_l)
+    right = pentatonic_five(root_r)
+    return left + right
+
+
+def wide_piano_prerender_names() -> tuple[str, ...]:
+    """동적 레이아웃에서 나올 수 있는 범위를 한 번에 합성."""
+    return tuple(midi_to_note_name(m) for m in range(36, 90))
+
+
 def note_name_to_midi(name: str) -> int:
     """'C4', 'D#5', 'Bb3' 형식 → MIDI 노트 번호."""
     m = re.match(r"^([A-Ga-g])([#b]?)(\d+)\s*$", name.strip())

@@ -23,11 +23,16 @@
 ### 피아노 모드
 
 - 실행: `python3 main.py --piano --camera 0`  
-  기본은 **C4~E5** 10음을 손0·손1 손가락 순에 매핑(짧은 **합성** 사인파 — 실제 샘플 피아노는 아님).
-- 음 배열 바꾸기: `instruments.piano.example.json` 참고 후  
+  **`--instruments` 없이** 켜면: **양손 손목 사이 거리**로 음역을 잡습니다.  
+  - 손을 **가깝게** 두면 → 왼손·오른손 모두 **중음역**에 가깝게(겹치는 느낌).  
+  - 손을 **멀리** 벌리면 → **왼손(Left)은 더 낮은 펜타토닉**, **오른손(Right)은 더 높은 펜타토닉**으로 벌어집니다.  
+  - MediaPipe **Left / Right** 라벨로 좌우를 구분합니다(셀카 미러면 체감이 반대일 수 있음).  
+  - 화면 아래에 `d=… L:… R:…` 힌트가 뜹니다.
+- **고정 음 배열**을 쓰려면: `instruments.piano.example.json` 참고 후  
   `python3 main.py --piano --instruments 내피아노.json --camera 0`  
-  (`slots` 값은 `C4`, `D#5`, `Bb3` 같은 **음명** 10개)
-- 사용 가능 음명: `python3 main.py --piano --list-instruments`
+  (`slots` 값은 `C4`, `D#5`, `Bb3` 같은 **음명** 10개 — 이 경우 거리 자동 음역은 끔)
+- 음색은 짧은 **합성** 사인파(실제 샘플 피아노는 아님).
+- 사용 가능 음명(기본 10개 나열): `python3 main.py --piano --list-instruments`
 
 ## 실행
 
