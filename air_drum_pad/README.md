@@ -59,6 +59,18 @@ NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.
 
 느리게만 움직이면 안 울리게 하려면 `--joint-dps`를 올리고, 너무 안 나오면 `--vy-trigger` / `--joint-dps`를 내립니다.
 
+### 창(OpenCV)이 안 뜰 때
+
+- **모니터에 연결된 보드에서**, 로그인한 **데스크톱 터미널**에서 실행하세요. (Cursor/SSH `tty` 세션만 쓰면 `DISPLAY`는 있어도 창이 로컬에 안 붙을 수 있습니다.)
+- 같은 셸에서 한 번 설정 후 실행:
+
+```bash
+export DISPLAY=:0
+export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
+```
+
+- 카메라가 다른 프로그램에 잡혀 있으면 `Camera read failed` 후 바로 종료합니다. `fuser -v /dev/video0` 로 점유 프로세스를 확인하세요.
+
 ## 문서
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
