@@ -683,11 +683,8 @@ class FullNpuHandsTracker:
         # Each entry: (center_x_px, center_y_px, roi_size_px, rotation_rad)
         self._prev_rois: list[tuple[float, float, float, float]] = []
         self._palm_skip_count: int = 0
-        self._PALM_REDETECT_EVERY: int = 5  # re-anchor often to prevent drift
-        self._smoother = _LandmarkSmoother(alpha=0.15, velocity_scale=4.0)
-        # ROI smoother: (cx, cy, sz, rot) per hand index
-        self._prev_smooth_rois: dict[int, np.ndarray] = {}
-        self._ROI_SMOOTH_ALPHA: float = 0.3  # heavy smoothing on ROI
+        self._PALM_REDETECT_EVERY: int = 5  # force palm every N frames
+        self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
 
     def _ensure_imports(self) -> None:
         if self._decode is None:
@@ -781,10 +778,6 @@ class FullNpuHandsTracker:
             _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
             for j in range(lm_orig.shape[0])
         )
-        # Validate: reject if too many landmarks are far out of frame
-        oob = sum(1 for l in lm21 if l.x < -0.3 or l.x > 1.3 or l.y < -0.3 or l.y > 1.3)
-        if oob > 5:
-            return None, None
         new_roi = self._roi_from_landmarks(lm21, iw, ih)
         return _HandLms(lm21), new_roi
 
@@ -808,17 +801,15 @@ class FullNpuHandsTracker:
                     new_rois.append(nroi)
 
             if lms_list:
-                self._prev_rois = [self._smooth_roi(i, r) for i, r in enumerate(new_rois)]
+                self._prev_rois = new_rois
                 self._palm_skip_count += 1
                 return self._finalize(lms_list)
 
             # Tracking lost — fall through to palm detection
             self._prev_rois.clear()
-            self._prev_smooth_rois.clear()
 
         # --- Full palm detection ---
         self._palm_skip_count = 0
-        # Don't clear smoothers — preserve continuity across palm redetect
         dets = self._run_palm(rgb)
         if dets.shape[0] == 0:
             self._prev_rois.clear()
@@ -830,7 +821,7 @@ class FullNpuHandsTracker:
 
         lms_list = []
         new_rois = []
-        for di, det in enumerate(dets):
+        for det in dets:
             patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
             result = self._hand_tracker.process(patch)
             if not result.multi_hand_landmarks:
@@ -844,33 +835,11 @@ class FullNpuHandsTracker:
                 _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
                 for j in range(lm_orig.shape[0])
             )
-            # Validate: reject if too many landmarks are far out of frame
-            oob = sum(1 for l in lm21 if l.x < -0.3 or l.x > 1.3 or l.y < -0.3 or l.y > 1.3)
-            if oob > 5:
-                continue
             lms_list.append(_HandLms(lm21))
             new_rois.append(self._roi_from_landmarks(lm21, iw, ih))
 
-        self._prev_rois = [self._smooth_roi(i, r) for i, r in enumerate(new_rois)]
+        self._prev_rois = new_rois
         return self._finalize(lms_list)
-
-    def _smooth_roi(self, idx: int, roi: tuple) -> tuple:
-        """Apply EMA to ROI parameters to prevent noise cascade."""
-        cur = np.array(roi, dtype=np.float64)
-        prev = self._prev_smooth_rois.get(idx)
-        if prev is None:
-            self._prev_smooth_rois[idx] = cur.copy()
-            return roi
-        a = self._ROI_SMOOTH_ALPHA
-        # Handle rotation wrapping
-        d_rot = cur[3] - prev[3]
-        if d_rot > math.pi:
-            cur[3] -= 2 * math.pi
-        elif d_rot < -math.pi:
-            cur[3] += 2 * math.pi
-        smoothed = prev + a * (cur - prev)
-        self._prev_smooth_rois[idx] = smoothed.copy()
-        return tuple(smoothed)
 
     def _finalize(self, lms_list: list[_HandLms]) -> HandTrackingResult:
         """Assign handedness, sort left-to-right, apply EMA smoothing."""
