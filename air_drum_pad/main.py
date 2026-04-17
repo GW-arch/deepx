@@ -92,8 +92,8 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         type=str,
         default="cpu",
-        choices=("cpu", "npu"),
-        help="손 추론: cpu=MediaPipe, npu=DX-RT .dxnn (--dxnn 필수)",
+        choices=("cpu", "npu", "npu-full"),
+        help="손 추론: cpu=MediaPipe, npu=DX-RT .dxnn (--dxnn 필수), npu-full=palm TFLite + hand .dxnn",
     )
     p.add_argument(
         "--dxnn",
@@ -108,6 +108,13 @@ def parse_args() -> argparse.Namespace:
         default="",
         metavar="PATH",
         help="입출력 레이아웃 JSON (예: models/dxnn_layout.example.json)",
+    )
+    p.add_argument(
+        "--palm-tflite",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="npu-full 백엔드: palm detection TFLite 경로 (기본: models/vendor/palm_detection_lite.tflite)",
     )
     return p.parse_args()
 
@@ -200,6 +207,7 @@ def main() -> int:
         model_complexity=args.model_complexity,
         dxnn_path=args.dxnn,
         dxnn_layout=args.dxnn_layout if args.dxnn_layout.strip() else None,
+        palm_tflite=args.palm_tflite if args.palm_tflite.strip() else None,
     )
 
     fps_t0 = time.perf_counter()

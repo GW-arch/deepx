@@ -1,0 +1,21 @@
+{
+  "input": {
+    "tensor_layout": "nhwc",
+    "color_order": "rgb",
+    "square_pad": false,
+    "normalize": {
+      "mode": "scale_255",
+      "dtype": "float32"
+    },
+    "height": 192,
+    "width": 192
+  },
+  "outputs": {
+    "boxes_tensor_index": 0,
+    "scores_tensor_index": 1,
+    "num_boxes": 2016,
+    "num_coords": 18,
+    "num_keypoints": 7,
+    "score_thresh": 0.5
+  }
+}

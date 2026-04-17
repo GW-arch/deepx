@@ -2,12 +2,18 @@
 from __future__ import annotations
 
 import json
+import math
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Protocol, Sequence, runtime_checkable
 
 import cv2
 import numpy as np
+
+_tools_dir = str(Path(__file__).resolve().parent / "tools")
+if _tools_dir not in sys.path:
+    sys.path.insert(0, _tools_dir)
 
 
 # --- MediaPipe-compatible view types (duck typing for strike_detector / main) ---
@@ -538,6 +544,158 @@ class DxnnHandTracker:
             self._ie = None
 
 
+# --- Full pipeline: Palm detection + Hand landmark (CPU TFLite + optional NPU) ---
+
+
+class FullNpuHandsTracker:
+    """Palm detection (TFLite CPU) → ROI warp → Hand landmark (.dxnn NPU or TFLite CPU).
+
+    Palm detection 은 현재 TFLite (CPU) 로 실행하며, 향후 palm .dxnn 이 빌드되면
+    NPU 로 교체할 수 있다.  Hand landmark 는 기존 DxnnHandTracker 와 동일한
+    .dxnn 을 사용한다.
+    """
+
+    def __init__(
+        self,
+        *,
+        palm_tflite_path: str,
+        hand_dxnn_path: str,
+        hand_layout_path: Optional[str],
+        max_hands: int,
+        palm_score_thresh: float = 0.5,
+    ) -> None:
+        from palm_decode import generate_ssd_anchors
+        from palm_letterbox import rgb_uint8_to_palm_input_tensor  # noqa: F811
+
+        self._max_hands = max(1, int(max_hands))
+        self._palm_score_thresh = palm_score_thresh
+
+        # Palm model (TFLite CPU)
+        self._palm_tflite = Path(palm_tflite_path)
+        if not self._palm_tflite.is_file():
+            raise FileNotFoundError(f"Palm TFLite not found: {palm_tflite_path}")
+        try:
+            import tensorflow as tf
+            self._Interpreter = tf.lite.Interpreter
+        except ImportError:
+            try:
+                import tflite_runtime.interpreter as tflite
+                self._Interpreter = tflite.Interpreter
+            except ImportError:
+                raise ImportError(
+                    "FullNpuHandsTracker 의 palm detection 에 tensorflow 또는 "
+                    "tflite_runtime 이 필요합니다."
+                )
+        self._palm_intr = self._Interpreter(model_path=str(self._palm_tflite))
+        self._palm_intr.allocate_tensors()
+        self._palm_inp = self._palm_intr.get_input_details()[0]
+        self._palm_outs = self._palm_intr.get_output_details()
+        self._anchors = generate_ssd_anchors()
+
+        # Hand landmark model (DxnnHandTracker)
+        self._hand_tracker = DxnnHandTracker(
+            hand_dxnn_path,
+            layout_path=hand_layout_path,
+            max_hands=1,  # one hand per ROI
+        )
+
+        # Stash callables for runtime (avoid repeated imports)
+        self._rgb_to_palm = rgb_uint8_to_palm_input_tensor
+        self._decode = None  # lazy import
+        self._roi_fn = None
+
+    def _ensure_imports(self) -> None:
+        if self._decode is None:
+            from palm_decode import decode_palm_tensors
+            from palm_roi import (
+                extract_hand_roi,
+                inverse_landmark_transform,
+            )
+            self._decode = decode_palm_tensors
+            self._extract_roi = extract_hand_roi
+            self._inv_lm = inverse_landmark_transform
+
+    def _run_palm(self, rgb: np.ndarray):
+        """Run palm detection, return (K, 19) detections + letterbox meta."""
+        tensor, meta = self._rgb_to_palm(rgb)
+        inp_dtype = self._palm_inp["dtype"]
+        if inp_dtype in (np.float32, "float32"):
+            tensor = tensor.astype(np.float32)
+        elif inp_dtype in (np.uint8, "uint8"):
+            tensor = (tensor * 255.0).clip(0, 255).astype(np.uint8)
+        self._palm_intr.set_tensor(self._palm_inp["index"], tensor)
+        self._palm_intr.invoke()
+        raw_outputs = [self._palm_intr.get_tensor(o["index"]) for o in self._palm_outs]
+        dets = self._decode(
+            raw_outputs, self._anchors,
+            letterbox_meta=meta,
+            score_thresh=self._palm_score_thresh,
+        )
+        return dets
+
+    def process(self, rgb: np.ndarray) -> HandTrackingResult:
+        self._ensure_imports()
+        ih, iw = rgb.shape[:2]
+
+        dets = self._run_palm(rgb)
+        if dets.shape[0] == 0:
+            return HandTrackingResult([], [])
+
+        # Sort by score descending, take top max_hands
+        order = np.argsort(-dets[:, 0])
+        dets = dets[order[: self._max_hands]]
+
+        lms_list: list[_HandLms] = []
+        handed: list[_Handedness] = []
+
+        for det in dets:
+            # Extract ROI and warp
+            patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
+
+            # Run hand landmark on the warped patch
+            patch_rgb = patch  # already RGB
+            result = self._hand_tracker.process(patch_rgb)
+
+            if not result.multi_hand_landmarks:
+                continue
+
+            hlm = result.multi_hand_landmarks[0]
+
+            # Map landmarks back to original image coordinates
+            lm_flat = np.array(
+                [[l.x, l.y, l.z] for l in hlm.landmark], dtype=np.float32,
+            )
+            lm_orig = self._inv_lm(lm_flat, cx, cy, sz, rot, iw, ih)
+
+            lm21 = tuple(
+                _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
+                for j in range(lm_orig.shape[0])
+            )
+            lms_list.append(_HandLms(lm21))
+
+            # Handedness from wrist x
+            wx = lm21[0].x
+            lab = "Left" if wx < 0.5 else "Right"
+            sc = float(det[0])
+            handed.append(_Handedness(lab, sc))
+
+        # Sort left-to-right
+        if len(lms_list) >= 2:
+            pairs = list(zip(lms_list, handed))
+            pairs.sort(key=lambda p: p[0].landmark[0].x)
+            lms_list = [p[0] for p in pairs]
+            handed = [p[1] for p in pairs]
+            if len(pairs) >= 2:
+                handed[0] = _Handedness("Left", handed[0].classification[0].score)
+                handed[1] = _Handedness("Right", handed[1].classification[0].score)
+
+        return HandTrackingResult(lms_list, handed)
+
+    def close(self) -> None:
+        self._hand_tracker.close()
+        self._palm_intr = None
+
+
 def create_tracker(
     backend: str,
     *,
@@ -545,6 +703,7 @@ def create_tracker(
     model_complexity: int,
     dxnn_path: str,
     dxnn_layout: Optional[str],
+    palm_tflite: Optional[str] = None,
 ) -> HandTracker:
     b = backend.strip().lower()
     if b == "cpu":
@@ -560,4 +719,23 @@ def create_tracker(
             layout_path=dxnn_layout,
             max_hands=max_hands,
         )
-    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | npu)")
+    if b in ("npu-full", "npu_full"):
+        if not dxnn_path or not dxnn_path.strip():
+            raise SystemExit("npu-full 백엔드는 --dxnn (hand landmark) 경로가 필요합니다.")
+        if not palm_tflite or not palm_tflite.strip():
+            # Auto-detect default path
+            default_palm = Path(__file__).resolve().parent / "models" / "vendor" / "palm_detection_lite.tflite"
+            if default_palm.is_file():
+                palm_tflite = str(default_palm)
+            else:
+                raise SystemExit(
+                    "npu-full 백엔드는 --palm-tflite 경로가 필요합니다. "
+                    f"(기본 경로 {default_palm} 없음)"
+                )
+        return FullNpuHandsTracker(
+            palm_tflite_path=palm_tflite.strip(),
+            hand_dxnn_path=dxnn_path.strip(),
+            hand_layout_path=dxnn_layout,
+            max_hands=max_hands,
+        )
+    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | npu | npu-full)")

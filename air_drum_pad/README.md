@@ -49,7 +49,21 @@ python3 main.py --camera 0
 | `--backend` | 설명 |
 |-------------|------|
 | `cpu` (기본) | MediaPipe Hands |
-| `npu` | DX-RT `.dxnn` + `dx_engine` (레이아웃 JSON) |
+| `npu` | DX-RT `.dxnn` + `dx_engine` (레이아웃 JSON) — hand landmark만 NPU, palm 검출 없음(dual-halves 근사) |
+| `npu-full` | Palm detection (TFLite CPU) → ROI warp → Hand landmark (.dxnn NPU) — 정식 2-hand 파이프라인 |
+
+**npu-full 예시:**
+
+```bash
+python3 main.py --backend npu-full \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
+  --palm-tflite models/vendor/palm_detection_lite.tflite \
+  --max-hands 2
+```
+
+`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색.  
+Palm TFLite가 없으면 `python3 tools/export_mediapipe_palm_onnx.py --variant lite` 로 생성.
 
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
 요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (로컬 `tools/compile_dxnn.sh` 또는 SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu --dxnn …`.
@@ -77,8 +91,19 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [EXPERIMENTS.md](docs/EXPERIMENTS.md)
-- [Palm+Hand 전부 NPU 로 옮기기 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Palm `.dxnn`·디코드·ROI·통합 단계  
-- [**다음 세션 실험 가이드**](docs/NEXT_SESSION_NPU_PALM.md) — 명령어·체크리스트·완료 기준
+- [Palm+Hand NPU 파이프라인 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Phase 0~5 로드맵  
+- [다음 세션 실험 가이드](docs/NEXT_SESSION_NPU_PALM.md) — 명령어·체크리스트·완료 기준
+
+### 구현 현황
+
+| Phase | 내용 | 상태 |
+|-------|------|------|
+| 0 | Palm 상수·letterbox·export·smoke | ✅ |
+| 1 | `palm_decode.py` — 앵커·디코드·NMS·letterbox 제거 | ✅ |
+| 2 | `palm_roi.py` — palm keypoints → ROI warp 224×224 | ✅ |
+| 3 | Palm `.dxnn` layout JSON 초안 | ✅ (ONNX 변환은 tflite2onnx 제약으로 보류) |
+| 4 | `FullNpuHandsTracker` + `--backend npu-full` CLI | ✅ |
+| 5 | README / models/README 정리 | ✅ |
 
 ## 구성
 
@@ -89,4 +114,10 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | `strike_detector.py` | `InstrumentStrikeDetector` — 손끝 속도 + 관절 각속도 |
 | `drumkit_audio.py` | 16종 합성 샘플, 손가락 슬롯에 매핑 |
 | `tools/export_mediapipe_hand_onnx.py` | 공개 TFLite → ONNX + 레이아웃 생성 |
+| `tools/export_mediapipe_palm_onnx.py` | Palm TFLite 추출 + ONNX 변환 시도 |
+| `tools/palm_decode.py` | Palm SSD 앵커 생성 · box 디코드 · weighted NMS · letterbox 제거 |
+| `tools/palm_letterbox.py` | Palm 192×192 입력 전처리 (keep aspect, zero pad) |
+| `tools/palm_roi.py` | Palm keypoints → 회전 ROI → affine warp 224×224 (hand landmark 입력) |
+| `tools/palm_mp_spec.py` | MediaPipe palm detection 그래프 상수 |
+| `tools/smoke_palm_interpreter.py` | Palm TFLite I/O 스모크 테스트 |
 | `tools/compile_dxnn.sh` | DX-COM 호출 래퍼 (`DX_COM` 환경변수 지원) |
