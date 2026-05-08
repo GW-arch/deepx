@@ -111,6 +111,12 @@
 cd air_drum_pad
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 \
+  --backends cpu-baseline,npu-full --csv /tmp/palm_sweep.csv
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --debug-dir /tmp/air_drum_debug --debug-top-k 10
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --async-palm --frame-interval-ms 16.7
 ```
 
 현재 `dataset/` 90프레임에서 확인한 예시 결과(Orange Pi 5 Plus, DX-RT/dx_engine 1.1.4):
@@ -120,6 +126,7 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redet
 | `cpu-baseline`, palm every frame | 84.40 ms | 86.78 ms | palm 39.26 ms + hand 44.80 ms | CPU TFLite 기준 |
 | `npu-full`, palm every frame | 50.32 ms | 54.52 ms | palm 40.93 ms + hand 9.13 ms | 같은 palm+ROI, hand만 NPU |
 | `npu-full`, `--palm-redetect-every 5` (20프레임 smoke) | 15.29 ms | 50.96 ms | palm frames 3/20, tracking frames 17/20 | 지연 개선, 정확도 회귀 확인 필요 |
+| `npu-full`, `--async-palm` smoke | 10–20 ms대 | 입력 pacing 의존 | tracking + async palm refresh | 실험용 파이프라인 |
 
 `npu-full` vs `cpu-baseline` landmark 오차(90프레임, normalized xy):
 
@@ -134,6 +141,8 @@ CSV/JSON 저장:
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --csv /tmp/air_drum_bench.csv --json /tmp/air_drum_bench.json
 ```
+
+오차 overlay는 `--debug-dir`에 PNG와 `manifest.json`을 저장합니다. reference는 기본적으로 `cpu-baseline`이며, overlay 색상은 green=reference, red=test입니다.
 
 ---
 

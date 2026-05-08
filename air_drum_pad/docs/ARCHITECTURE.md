@@ -62,6 +62,8 @@
 
 **Palm Detection (기본 매 프레임):** `npu-full` 및 `cpu-baseline` 모드에서 기본값은 palm detection을 **매 프레임** 실행합니다. 이전에는 landmark 기반 ROI 트래킹으로 5프레임에 1번만 palm을 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 ROI 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01). `--palm-redetect-every 0` (기본, 항상 실행). `N>0`은 palm skip/ROI tracking 실험 옵션입니다.
 
+**Async Palm 실험:** `--async-palm`을 켜면 palm detection을 단일 background thread에서 실행하고, 메인 루프는 이전 ROI로 hand landmark를 계속 추적합니다. 새 palm 결과가 준비되면 현재 프레임에서 hand ROI를 다시 추론해 ROI를 갱신합니다. 이는 지연을 줄이는 실험 경로이며, 정확도는 `tools/benchmark_dataset.py --debug-dir`와 `tools/sweep_palm_redetect.py`로 회귀 확인합니다.
+
 **백엔드 비교:**
 
 | `--backend` | Palm Detection | Hand Landmark | 전체 (2 hands) | 비고 |

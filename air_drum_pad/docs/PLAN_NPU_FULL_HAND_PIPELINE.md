@@ -86,12 +86,19 @@ flowchart LR
 - [x] `FullNpuHandsTracker.last_profile`: 프레임별 `palm_ms`, `hand_ms`, `mode`(palm/tracking), 검출 수 기록.
 - [x] `--palm-redetect-every N` CLI 플래그: 기본 `0`(매 프레임 palm, 정확도 우선), `N>0`은 palm skip/ROI tracking 실험.
 - [x] `npu-full` 자동 palm 선택을 TFLite 우선으로 변경. Palm .dxnn은 score head 양자화 실패가 알려져 있으므로 `--palm-dxnn`을 명시한 실험에서만 사용.
+- [x] `--async-palm` 실험 옵션: background thread에서 palm을 돌리고 메인 루프는 이전 ROI로 hand landmark를 계속 추적.
+- [x] `tools/sweep_palm_redetect.py`: `--palm-redetect-every` 값(예: 0,1,2,3,5,10)을 batch로 실행해 CSV/JSON 생성.
+- [x] `tools/benchmark_dataset.py --debug-dir`: landmark 오차가 큰 frame의 green/reference vs red/test overlay PNG와 manifest 저장.
+- [x] `tools/capture_dataset.py` manifest 기록: session/label/notes와 frame range를 `capture_manifest.json`에 누적.
 
 예:
 
 ```bash
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 --backends cpu-baseline,npu-full
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --debug-dir /tmp/air_drum_debug
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --async-palm --frame-interval-ms 16.7
 ```
 
 ### Phase 6 — Palm NPU 통합 (속도 확인, 양자화 품질 실패)

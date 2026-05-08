@@ -16,6 +16,8 @@ import sys
 import time
 import cv2
 import glob
+import json
+from datetime import datetime, timezone
 
 
 def next_frame_index(outdir: str) -> int:
@@ -42,6 +44,15 @@ def main():
     ap.add_argument("--outdir", type=str, default="dataset")
     ap.add_argument("--delay", type=float, default=1.0, help="seconds to wait after SPACE")
     ap.add_argument("--duration", type=float, default=1.0, help="seconds to capture")
+    ap.add_argument("--label", type=str, default="", help="e.g. 'left_index_down'")
+    ap.add_argument("--session", type=str, default="", help="optional session/set name")
+    ap.add_argument("--notes", type=str, default="", help="free-form capture notes")
+    ap.add_argument(
+        "--manifest",
+        type=str,
+        default="capture_manifest.json",
+        help="manifest JSON path relative to outdir (default: capture_manifest.json)",
+    )
     args = ap.parse_args()
 
     os.makedirs(args.outdir, exist_ok=True)
@@ -119,6 +130,41 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
     print(f"[capture] Done. Saved {count} frames: frame_{start_idx:03d}.png → frame_{idx-1:03d}.png")
+
+    manifest_path = (
+        args.manifest
+        if os.path.isabs(args.manifest)
+        else os.path.join(args.outdir, args.manifest)
+    )
+    record = {
+        "created_at": datetime.now(timezone.utc).isoformat(),
+        "session": args.session,
+        "label": args.label,
+        "notes": args.notes,
+        "camera": args.camera,
+        "width": args.width,
+        "height": args.height,
+        "delay_s": args.delay,
+        "duration_s": args.duration,
+        "start_index": start_idx,
+        "end_index": idx - 1,
+        "num_frames": count,
+        "files": [f"frame_{i:03d}.png" for i in range(start_idx, idx)],
+    }
+    try:
+        if os.path.exists(manifest_path):
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                manifest = json.load(f)
+        else:
+            manifest = {"captures": []}
+        if not isinstance(manifest, dict):
+            manifest = {"captures": []}
+        manifest.setdefault("captures", []).append(record)
+        with open(manifest_path, "w", encoding="utf-8") as f:
+            json.dump(manifest, f, ensure_ascii=False, indent=2)
+        print(f"[capture] Manifest updated: {manifest_path}")
+    except Exception as e:
+        print(f"[capture] WARNING: failed to update manifest: {e}", file=sys.stderr)
 
 
 if __name__ == "__main__":

@@ -127,12 +127,24 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
 # palm skip/ROI tracking 실험: palm 1회 후 최대 5프레임은 landmark ROI로 추적
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
 
+# palm skip 값을 한 번에 sweep
+python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 \
+  --backends cpu-baseline,npu-full --csv /tmp/palm_sweep.csv
+
+# 오차가 큰 프레임 overlay 저장 (green=cpu-baseline, red=npu-full)
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --debug-dir /tmp/air_drum_debug --debug-top-k 10
+
+# 실험용 async palm: palm은 백그라운드, hand는 이전 ROI로 계속 추적
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --async-palm --frame-interval-ms 16.7
+
 # CSV/JSON 저장
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --csv /tmp/air_drum_bench.csv --json /tmp/air_drum_bench.json
 ```
 
-`--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`은 지연을 줄이는 **실험 옵션**입니다.
+`--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`과 `--async-palm`은 지연을 줄이는 **실험 옵션**입니다.
 
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
 요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu-full --palm-tflite … --dxnn …`.
@@ -200,7 +212,8 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | `tools/palm_mp_spec.py` | MediaPipe palm detection 그래프 상수 |
 | `tools/smoke_palm_interpreter.py` | Palm TFLite I/O 스모크 테스트 |
 | `tools/compile_dxnn.sh` | DX-COM 호출 래퍼 (`DX_COM` 환경변수 지원) |
-| `tools/benchmark_dataset.py` | 저장된 `dataset/frame_*.png`로 백엔드 지연·landmark 오차 비교 |
-| `tools/capture_dataset.py` | SPACE → delay → burst 방식의 데이터셋 캡처 |
+| `tools/benchmark_dataset.py` | 저장된 `dataset/frame_*.png`로 백엔드 지연·landmark 오차 비교, 오차 overlay 저장 |
+| `tools/sweep_palm_redetect.py` | `--palm-redetect-every` 값을 sweep해 지연-오차 곡선 CSV/JSON 생성 |
+| `tools/capture_dataset.py` | SPACE → delay → burst 방식의 데이터셋 캡처, manifest 기록 |
 | `tools/gen_instrument_diagrams.py` | 악기 매핑 다이어그램 PNG 생성 (matplotlib) |
 | `instruments/` | 생성된 매핑 다이어그램 이미지 (drum, piano 등) |

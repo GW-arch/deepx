@@ -5,6 +5,7 @@ import json
 import math
 import sys
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Protocol, Sequence, runtime_checkable
@@ -692,6 +693,7 @@ class FullNpuHandsTracker:
         max_hands: int,
         palm_score_thresh: float = 0.5,
         palm_redetect_every: int = 0,
+        async_palm: bool = False,
     ) -> None:
         from palm_decode import generate_ssd_anchors
         from palm_letterbox import rgb_uint8_to_palm_input_tensor  # noqa: F811
@@ -766,6 +768,13 @@ class FullNpuHandsTracker:
         self._prev_rois: list[tuple[float, float, float, float]] = []
         self._palm_skip_count: int = 0
         self._PALM_REDETECT_EVERY: int = max(0, int(palm_redetect_every))
+        self._async_palm = bool(async_palm)
+        self._palm_executor: ThreadPoolExecutor | None = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="air-drum-palm")
+            if self._async_palm
+            else None
+        )
+        self._palm_future: Future[tuple[np.ndarray, float]] | None = None
         # Public per-frame timing snapshot for benchmark tools.
         self.last_profile: dict[str, Any] = {}
         self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
@@ -810,6 +819,43 @@ class FullNpuHandsTracker:
             letterbox_meta=meta,
             score_thresh=self._palm_score_thresh,
         )
+        return dets
+
+    def _run_palm_timed(self, rgb: np.ndarray) -> tuple[np.ndarray, float]:
+        t0 = time.perf_counter()
+        dets = self._run_palm(rgb)
+        return dets, (time.perf_counter() - t0) * 1000.0
+
+    def _schedule_async_palm(self, rgb: np.ndarray) -> None:
+        """Start one background palm pass if async mode is enabled and idle."""
+        if not self._async_palm or self._palm_executor is None:
+            return
+        # If a completed future is waiting, keep it for the next process() call
+        # to consume; replacing it here would drop a fresh palm result.
+        if self._palm_future is not None:
+            return
+        # Copy the frame because the caller owns the input buffer.
+        self._palm_future = self._palm_executor.submit(self._run_palm_timed, rgb.copy())
+
+    def _consume_async_palm(
+        self,
+        profile: dict[str, Any],
+        *,
+        wait: bool = False,
+    ) -> np.ndarray | None:
+        """Return finished async palm detections, optionally waiting for them."""
+        fut = self._palm_future
+        if fut is None:
+            return None
+        if not wait and not fut.done():
+            return None
+        t_wait0 = time.perf_counter()
+        dets, palm_ms = fut.result()
+        wait_ms = (time.perf_counter() - t_wait0) * 1000.0
+        self._palm_future = None
+        profile["async_palm_ms"] += palm_ms
+        profile["palm_wait_ms"] += wait_ms
+        profile["num_detections"] = int(dets.shape[0])
         return dets
 
     def _roi_from_landmarks(
@@ -864,14 +910,59 @@ class FullNpuHandsTracker:
         new_roi = self._roi_from_landmarks(lm21, iw, ih)
         return _HandLms(lm21), new_roi
 
+    def _run_hands_from_detections(
+        self,
+        rgb: np.ndarray,
+        dets: np.ndarray,
+        iw: int,
+        ih: int,
+        profile: dict[str, Any],
+    ) -> tuple[list[_HandLms], list[tuple[float, float, float, float]]]:
+        """Run hand landmark on top scored palm detections."""
+        if dets.shape[0] == 0:
+            return [], []
+
+        # Sort by score descending, take top max_hands
+        order = np.argsort(-dets[:, 0])
+        dets = dets[order[: self._max_hands]]
+
+        lms_list: list[_HandLms] = []
+        new_rois: list[tuple[float, float, float, float]] = []
+        for det in dets:
+            t_hand0 = time.perf_counter()
+            patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
+            result = self._hand_tracker.process(patch)
+            if not result.multi_hand_landmarks:
+                profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
+                continue
+            hlm = result.multi_hand_landmarks[0]
+            lm_flat = np.array(
+                [[l.x, l.y, l.z] for l in hlm.landmark], dtype=np.float32,
+            )
+            lm_orig = self._inv_lm(lm_flat, cx, cy, sz, rot, iw, ih)
+            lm21 = tuple(
+                _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
+                for j in range(lm_orig.shape[0])
+            )
+            lms_list.append(_HandLms(lm21))
+            new_rois.append(self._roi_from_landmarks(lm21, iw, ih))
+            profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
+        return lms_list, new_rois
+
     def _profiled_result(
         self,
         result: HandTrackingResult,
         profile: dict[str, Any],
         t0: float,
+        rgb_for_async: np.ndarray | None = None,
     ) -> HandTrackingResult:
+        if rgb_for_async is not None and result.multi_hand_landmarks:
+            self._schedule_async_palm(rgb_for_async)
         profile["total_ms"] = (time.perf_counter() - t0) * 1000.0
         profile["num_hands"] = len(result.multi_hand_landmarks or [])
+        profile["async_pending"] = (
+            self._palm_future is not None and not self._palm_future.done()
+        )
         self.last_profile = profile
         return result
 
@@ -883,16 +974,43 @@ class FullNpuHandsTracker:
             "palm_ms": 0.0,
             "hand_ms": 0.0,
             "total_ms": 0.0,
+            "async_palm_ms": 0.0,
+            "palm_wait_ms": 0.0,
             "num_detections": 0,
             "num_hands": 0,
             "palm_redetect_every": self._PALM_REDETECT_EVERY,
+            "async_palm": self._async_palm,
+            "async_pending": False,
         }
         ih, iw = rgb.shape[:2]
+
+        # --- Consume a finished background palm pass and refresh ROIs on current frame. ---
+        async_dets = self._consume_async_palm(profile, wait=False)
+        if async_dets is not None:
+            profile["mode"] = "async_palm"
+            if async_dets.shape[0] > 0:
+                lms_list, new_rois = self._run_hands_from_detections(
+                    rgb, async_dets, iw, ih, profile
+                )
+                if lms_list:
+                    self._prev_rois = new_rois
+                    self._palm_skip_count = 0
+                    return self._profiled_result(
+                        self._finalize(lms_list),
+                        profile,
+                        t_total0,
+                        rgb_for_async=rgb,
+                    )
+            elif not self._prev_rois:
+                return self._profiled_result(HandTrackingResult([], []), profile, t_total0)
 
         # --- Try tracking from previous ROIs (skip palm) ---
         use_tracking = (
             len(self._prev_rois) > 0
-            and self._palm_skip_count < self._PALM_REDETECT_EVERY
+            and (
+                self._async_palm
+                or self._palm_skip_count < self._PALM_REDETECT_EVERY
+            )
         )
 
         if use_tracking:
@@ -914,50 +1032,37 @@ class FullNpuHandsTracker:
                     self._finalize(lms_list),
                     profile,
                     t_total0,
+                    rgb_for_async=rgb,
                 )
 
             # Tracking lost — fall through to palm detection
             self._prev_rois.clear()
 
         # --- Full palm detection ---
-        profile["mode"] = "palm"
+        profile["mode"] = "async_wait" if self._async_palm and self._palm_future else "palm"
         self._palm_skip_count = 0
-        t_palm0 = time.perf_counter()
-        dets = self._run_palm(rgb)
-        profile["palm_ms"] = (time.perf_counter() - t_palm0) * 1000.0
+        if self._async_palm and self._palm_future is not None:
+            dets = self._consume_async_palm(profile, wait=True)
+            if dets is None:  # defensive; wait=True should always produce a result.
+                dets = np.empty((0, 19), dtype=np.float32)
+        else:
+            t_palm0 = time.perf_counter()
+            dets = self._run_palm(rgb)
+            profile["palm_ms"] = (time.perf_counter() - t_palm0) * 1000.0
         profile["num_detections"] = int(dets.shape[0])
         if dets.shape[0] == 0:
             self._prev_rois.clear()
             return self._profiled_result(HandTrackingResult([], []), profile, t_total0)
 
-        # Sort by score descending, take top max_hands
-        order = np.argsort(-dets[:, 0])
-        dets = dets[order[: self._max_hands]]
-
-        lms_list = []
-        new_rois = []
-        for det in dets:
-            t_hand0 = time.perf_counter()
-            patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
-            result = self._hand_tracker.process(patch)
-            if not result.multi_hand_landmarks:
-                profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
-                continue
-            hlm = result.multi_hand_landmarks[0]
-            lm_flat = np.array(
-                [[l.x, l.y, l.z] for l in hlm.landmark], dtype=np.float32,
-            )
-            lm_orig = self._inv_lm(lm_flat, cx, cy, sz, rot, iw, ih)
-            lm21 = tuple(
-                _Lm(float(lm_orig[j, 0]), float(lm_orig[j, 1]), float(lm_orig[j, 2]))
-                for j in range(lm_orig.shape[0])
-            )
-            lms_list.append(_HandLms(lm21))
-            new_rois.append(self._roi_from_landmarks(lm21, iw, ih))
-            profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
+        lms_list, new_rois = self._run_hands_from_detections(rgb, dets, iw, ih, profile)
 
         self._prev_rois = new_rois
-        return self._profiled_result(self._finalize(lms_list), profile, t_total0)
+        return self._profiled_result(
+            self._finalize(lms_list),
+            profile,
+            t_total0,
+            rgb_for_async=rgb,
+        )
 
     def _finalize(self, lms_list: list[_HandLms]) -> HandTrackingResult:
         """Assign handedness, sort left-to-right, apply EMA smoothing."""
@@ -984,6 +1089,10 @@ class FullNpuHandsTracker:
         return HandTrackingResult(lms_list, handed)
 
     def close(self) -> None:
+        if self._palm_executor is not None:
+            self._palm_executor.shutdown(wait=True, cancel_futures=False)
+            self._palm_executor = None
+            self._palm_future = None
         self._hand_tracker.close()
         if self._palm_ie is not None:
             self._palm_ie.dispose()
@@ -1002,6 +1111,7 @@ def create_tracker(
     palm_dxnn: Optional[str] = None,
     hand_tflite: Optional[str] = None,
     palm_redetect_every: int = 0,
+    async_palm: bool = False,
 ) -> HandTracker:
     b = backend.strip().lower()
     if b == "cpu":
@@ -1089,5 +1199,6 @@ def create_tracker(
             hand_layout_path=dxnn_layout,
             max_hands=max_hands,
             palm_redetect_every=palm_redetect_every,
+            async_palm=async_palm,
         )
     raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | npu | npu-full)")

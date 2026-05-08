@@ -5,6 +5,10 @@
 - `tools/benchmark_dataset.py` 추가: `dataset/frame_*.png`를 재생해 `cpu-baseline`/`npu-full` 지연, palm/hand 세부 시간, landmark 오차를 반복 측정.
 - `FullNpuHandsTracker.last_profile` 및 `--palm-redetect-every N` 추가: 기본은 `0`(매 프레임 palm), `N>0`은 palm skip/ROI tracking 실험.
 - `npu-full`의 palm 자동 탐색을 **TFLite 우선**으로 변경. Palm .dxnn은 score head 양자화 실패가 알려져 있으므로 `--palm-dxnn` 명시 시에만 실험적으로 사용.
+- `--async-palm` 실험 옵션 추가: background palm + foreground ROI tracking.
+- `tools/sweep_palm_redetect.py` 추가: `--palm-redetect-every` sweep CSV/JSON 생성.
+- `tools/benchmark_dataset.py --debug-dir` 추가: landmark 오차 큰 프레임 overlay 자동 저장.
+- `tools/capture_dataset.py`에 session/label/notes manifest 기록 추가.
 
 빠른 재현:
 
@@ -12,6 +16,9 @@
 cd ~/deepx/air_drum_pad
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 --backends cpu-baseline,npu-full
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --debug-dir /tmp/air_drum_debug
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --async-palm --frame-interval-ms 16.7
 ```
 
 ## 2026-04-17 세션 #4 결과

@@ -141,6 +141,14 @@ def parse_args() -> argparse.Namespace:
             "0이면 매 프레임 palm 실행(기본, 드리프트 최소)."
         ),
     )
+    p.add_argument(
+        "--async-palm",
+        action="store_true",
+        help=(
+            "cpu-baseline/npu-full 실험용: palm detection을 백그라운드 스레드에서 돌리고 "
+            "그 사이 이전 ROI로 hand landmark를 계속 추적합니다."
+        ),
+    )
     return p.parse_args()
 
 
@@ -222,6 +230,7 @@ def main() -> int:
         palm_dxnn=args.palm_dxnn if args.palm_dxnn.strip() else None,
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
         palm_redetect_every=args.palm_redetect_every,
+        async_palm=args.async_palm,
     )
 
     fps_t0 = time.perf_counter()

@@ -34,7 +34,26 @@ from hand_tracker import create_tracker  # noqa: E402
 
 
 TIP_INDICES = (4, 8, 12, 16, 20)
-PROFILE_KEYS = ("mode", "palm_ms", "hand_ms", "total_ms", "num_detections", "num_hands")
+PROFILE_KEYS = (
+    "mode",
+    "palm_ms",
+    "hand_ms",
+    "total_ms",
+    "async_palm_ms",
+    "palm_wait_ms",
+    "num_detections",
+    "num_hands",
+    "async_pending",
+)
+
+HAND_CONNECTIONS = (
+    (0, 1), (1, 2), (2, 3), (3, 4),
+    (0, 5), (5, 6), (6, 7), (7, 8),
+    (5, 9), (9, 10), (10, 11), (11, 12),
+    (9, 13), (13, 14), (14, 15), (15, 16),
+    (13, 17), (17, 18), (18, 19), (19, 20),
+    (0, 17),
+)
 
 
 def parse_args() -> argparse.Namespace:
@@ -67,9 +86,20 @@ def parse_args() -> argparse.Namespace:
         default=0,
         help="0=run palm every frame; N>0=skip palm for up to N tracked frames",
     )
+    p.add_argument(
+        "--async-palm",
+        action="store_true",
+        help="Run palm detection in a background thread while ROI tracking continues.",
+    )
     p.add_argument("--warmup", type=int, default=1, help="Warmup invokes on first frame")
     p.add_argument("--runs", type=int, default=1, help="Number of full dataset passes")
     p.add_argument("--limit", type=int, default=0, help="Limit number of frames (0=all)")
+    p.add_argument(
+        "--frame-interval-ms",
+        type=float,
+        default=0.0,
+        help="Optional sleep after each frame to emulate camera pacing (e.g. 16.7 for 60 FPS).",
+    )
     p.add_argument(
         "--compare-ref",
         type=str,
@@ -77,6 +107,24 @@ def parse_args() -> argparse.Namespace:
         help="Reference backend for landmark error (default: cpu-baseline if present, else first)",
     )
     p.add_argument("--no-compare", action="store_true", help="Disable landmark comparison")
+    p.add_argument(
+        "--debug-dir",
+        type=str,
+        default="",
+        help="Save landmark overlay PNGs for the highest-error frames.",
+    )
+    p.add_argument(
+        "--debug-top-k",
+        type=int,
+        default=10,
+        help="How many high-error overlays to save when --debug-dir is set.",
+    )
+    p.add_argument(
+        "--debug-min-error",
+        type=float,
+        default=0.0,
+        help="Only save overlays whose max landmark error is at least this value.",
+    )
     p.add_argument("--csv", type=str, default="", help="Write per-frame timing CSV")
     p.add_argument("--json", type=str, default="", help="Write summary JSON")
     return p.parse_args()
@@ -143,6 +191,7 @@ def make_tracker(backend: str, args: argparse.Namespace):
         palm_dxnn=args.palm_dxnn.strip() or None,
         hand_tflite=args.hand_tflite.strip() or None,
         palm_redetect_every=args.palm_redetect_every,
+        async_palm=args.async_palm,
     )
 
 
@@ -234,6 +283,8 @@ def run_backend(
                     if key in profile:
                         rec[key] = profile[key]
                 records.append(rec)
+                if args.frame_interval_ms > 0:
+                    time.sleep(args.frame_interval_ms / 1000.0)
             last_run_hands = run_hands
     finally:
         tracker.close()
@@ -274,6 +325,142 @@ def compare_landmarks(
     return summary
 
 
+def collect_error_records(
+    ref_backend: str,
+    all_hands: dict[str, list[list[dict[str, Any]]]],
+    paths: list[Path],
+) -> list[dict[str, Any]]:
+    """Per-frame landmark error records with landmark arrays for debug rendering."""
+    ref = all_hands[ref_backend]
+    records: list[dict[str, Any]] = []
+    for backend, frames in all_hands.items():
+        if backend == ref_backend:
+            continue
+        for frame_idx, (ref_hands, test_hands) in enumerate(zip(ref, frames)):
+            ref_by = _first_by_label(ref_hands)
+            test_by = _first_by_label(test_hands)
+            for label in ("Right", "Left"):
+                if label not in ref_by or label not in test_by:
+                    continue
+                ref_lm = ref_by[label]["landmarks"]
+                test_lm = test_by[label]["landmarks"]
+                if ref_lm.shape[0] < 21 or test_lm.shape[0] < 21:
+                    continue
+                d = np.linalg.norm(ref_lm[:, :2] - test_lm[:, :2], axis=1)
+                records.append(
+                    {
+                        "backend": backend,
+                        "label": label,
+                        "frame_index": frame_idx,
+                        "image": paths[frame_idx].name,
+                        "mean_error": float(d.mean()),
+                        "tips_error": float(d[list(TIP_INDICES)].mean()),
+                        "max_error": float(d.max()),
+                        "max_landmark": int(d.argmax()),
+                        "ref_landmarks": ref_lm,
+                        "test_landmarks": test_lm,
+                    }
+                )
+    return records
+
+
+def _draw_landmarks(
+    image_bgr: np.ndarray,
+    lm: np.ndarray,
+    color: tuple[int, int, int],
+    *,
+    radius: int = 3,
+) -> None:
+    h, w = image_bgr.shape[:2]
+    pts = [(int(float(x) * w), int(float(y) * h)) for x, y in lm[:, :2]]
+    for a, b in HAND_CONNECTIONS:
+        if a < len(pts) and b < len(pts):
+            cv2.line(image_bgr, pts[a], pts[b], color, 2, cv2.LINE_AA)
+    for i, pt in enumerate(pts[:21]):
+        cv2.circle(image_bgr, pt, radius, color, -1, cv2.LINE_AA)
+        if i in TIP_INDICES:
+            cv2.circle(image_bgr, pt, radius + 2, (255, 255, 255), 1, cv2.LINE_AA)
+
+
+def save_debug_overlays(
+    debug_dir: str,
+    error_records: list[dict[str, Any]],
+    frames_rgb: list[np.ndarray],
+    *,
+    top_k: int,
+    min_error: float,
+) -> list[dict[str, Any]]:
+    out_dir = Path(debug_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    selected = [
+        r for r in sorted(error_records, key=lambda x: float(x["max_error"]), reverse=True)
+        if float(r["max_error"]) >= min_error
+    ][: max(0, top_k)]
+
+    manifest: list[dict[str, Any]] = []
+    for rank, rec in enumerate(selected, start=1):
+        frame_idx = int(rec["frame_index"])
+        canvas = cv2.cvtColor(frames_rgb[frame_idx], cv2.COLOR_RGB2BGR)
+        ref_lm = np.asarray(rec["ref_landmarks"], dtype=np.float32)
+        test_lm = np.asarray(rec["test_landmarks"], dtype=np.float32)
+        _draw_landmarks(canvas, ref_lm, (0, 220, 0), radius=3)     # reference: green
+        _draw_landmarks(canvas, test_lm, (0, 0, 255), radius=3)    # test: red
+
+        txt = (
+            f"{rec['backend']} {rec['label']} frame={frame_idx} "
+            f"mean={rec['mean_error']:.4f} tips={rec['tips_error']:.4f} "
+            f"max={rec['max_error']:.4f}@lm{rec['max_landmark']}"
+        )
+        cv2.rectangle(canvas, (0, 0), (canvas.shape[1], 34), (0, 0, 0), -1)
+        cv2.putText(
+            canvas,
+            txt,
+            (8, 24),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.55,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+        cv2.putText(
+            canvas,
+            "green=reference, red=test",
+            (8, canvas.shape[0] - 12),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.5,
+            (255, 255, 255),
+            1,
+            cv2.LINE_AA,
+        )
+
+        out_name = (
+            f"{rank:03d}_{rec['backend']}_{rec['label']}_"
+            f"frame{frame_idx:03d}_max{rec['max_error']:.4f}.png"
+        )
+        out_path = out_dir / out_name
+        cv2.imwrite(str(out_path), canvas)
+        manifest.append(
+            {
+                "rank": rank,
+                "path": str(out_path),
+                "backend": rec["backend"],
+                "label": rec["label"],
+                "frame_index": frame_idx,
+                "image": rec["image"],
+                "mean_error": rec["mean_error"],
+                "tips_error": rec["tips_error"],
+                "max_error": rec["max_error"],
+                "max_landmark": rec["max_landmark"],
+            }
+        )
+
+    (out_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return manifest
+
+
 def summarize_records(records_by_backend: dict[str, list[dict[str, Any]]]) -> dict[str, Any]:
     out: dict[str, Any] = {}
     for backend, records in records_by_backend.items():
@@ -282,6 +469,12 @@ def summarize_records(records_by_backend: dict[str, list[dict[str, Any]]]) -> di
         if any("palm_ms" in r for r in records):
             backend_summary["palm_ms"] = _stats([float(r.get("palm_ms", 0.0)) for r in records])
             backend_summary["hand_ms"] = _stats([float(r.get("hand_ms", 0.0)) for r in records])
+            backend_summary["async_palm_ms"] = _stats(
+                [float(r.get("async_palm_ms", 0.0)) for r in records]
+            )
+            backend_summary["palm_wait_ms"] = _stats(
+                [float(r.get("palm_wait_ms", 0.0)) for r in records]
+            )
             backend_summary["profile_total_ms"] = _stats(
                 [float(r.get("total_ms", 0.0)) for r in records]
             )
@@ -332,8 +525,13 @@ def print_summary(summary: dict[str, Any], comparisons: dict[str, Any] | None, r
         if "palm_ms" in data:
             palm = data["palm_ms"]["mean"] or 0.0
             hand = data["hand_ms"]["mean"] or 0.0
+            async_palm = data.get("async_palm_ms", {}).get("mean") or 0.0
+            palm_wait = data.get("palm_wait_ms", {}).get("mean") or 0.0
             modes = data.get("modes", {})
-            print(f"  profile: palm={palm:.2f} ms, hand={hand:.2f} ms, modes={modes}")
+            extra = ""
+            if async_palm or palm_wait:
+                extra = f", async_palm={async_palm:.2f} ms, wait={palm_wait:.2f} ms"
+            print(f"  profile: palm={palm:.2f} ms, hand={hand:.2f} ms{extra}, modes={modes}")
 
     if comparisons and ref:
         print(f"\n## Landmark error vs {ref} (normalized xy distance)")
@@ -362,7 +560,8 @@ def main() -> int:
 
     print(
         f"[benchmark] frames={len(paths)} runs={args.runs} warmup={args.warmup} "
-        f"backends={','.join(backends)} palm_redetect_every={args.palm_redetect_every}",
+        f"backends={','.join(backends)} palm_redetect_every={args.palm_redetect_every} "
+        f"async_palm={args.async_palm} frame_interval_ms={args.frame_interval_ms}",
         flush=True,
     )
 
@@ -386,6 +585,24 @@ def main() -> int:
 
     print_summary(summary, comparisons, ref_backend)
 
+    debug_manifest: list[dict[str, Any]] = []
+    if args.debug_dir.strip():
+        if not ref_backend:
+            print("[benchmark] --debug-dir ignored because landmark comparison is disabled.")
+        else:
+            error_records = collect_error_records(ref_backend, hands_by_backend, paths)
+            debug_manifest = save_debug_overlays(
+                args.debug_dir.strip(),
+                error_records,
+                frames_rgb,
+                top_k=args.debug_top_k,
+                min_error=args.debug_min_error,
+            )
+            print(
+                f"\n[benchmark] wrote {len(debug_manifest)} debug overlay(s): "
+                f"{args.debug_dir.strip()}"
+            )
+
     output = {
         "dataset": str(Path(args.dataset)),
         "glob": args.glob,
@@ -393,9 +610,12 @@ def main() -> int:
         "runs": args.runs,
         "warmup": args.warmup,
         "palm_redetect_every": args.palm_redetect_every,
+        "async_palm": args.async_palm,
+        "frame_interval_ms": args.frame_interval_ms,
         "summary": summary,
         "compare_ref": ref_backend,
         "landmark_comparison": comparisons,
+        "debug_overlays": debug_manifest,
     }
     if args.csv.strip():
         write_csv(args.csv.strip(), records_by_backend)
