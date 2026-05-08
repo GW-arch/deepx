@@ -144,6 +144,18 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 
 오차 overlay는 `--debug-dir`에 PNG와 `manifest.json`을 저장합니다. reference는 기본적으로 `cpu-baseline`이며, overlay 색상은 green=reference, red=test입니다.
 
+### 8.5 품질 체크
+
+반복 구현 후 최소 검증:
+
+```bash
+./scripts/check_quality.sh
+RUN_BENCH_SMOKE=0 ./scripts/check_quality.sh  # 모델/데이터셋 없는 환경
+python3 -m unittest discover -s tests -v
+```
+
+현재 단위 테스트는 strike detector, ROI transform, dataset benchmark helper, palm redetect sweep helper, capture dataset indexing을 검사합니다.
+
 ---
 
 ## 9. 참조

@@ -146,6 +146,19 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 
 `--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`과 `--async-palm`은 지연을 줄이는 **실험 옵션**입니다.
 
+#### 품질 체크 / 회귀 테스트
+
+```bash
+# 문법 체크 + unittest + palm decode test + 짧은 dataset benchmark smoke
+./scripts/check_quality.sh
+
+# benchmark smoke가 오래 걸리거나 모델 파일이 없는 환경에서는 생략
+RUN_BENCH_SMOKE=0 ./scripts/check_quality.sh
+
+# 순수 단위 테스트만
+python3 -m unittest discover -s tests -v
+```
+
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
 요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu-full --palm-tflite … --dxnn …`.
 
@@ -217,3 +230,5 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | `tools/capture_dataset.py` | SPACE → delay → burst 방식의 데이터셋 캡처, manifest 기록 |
 | `tools/gen_instrument_diagrams.py` | 악기 매핑 다이어그램 PNG 생성 (matplotlib) |
 | `instruments/` | 생성된 매핑 다이어그램 이미지 (drum, piano 등) |
+| `tests/` | strike detector, ROI transform, benchmark/sweep helper 단위 테스트 |
+| `scripts/check_quality.sh` | 문법·단위·palm decode·benchmark smoke 통합 검사 |
