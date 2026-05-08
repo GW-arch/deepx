@@ -9,6 +9,7 @@
 - `tools/sweep_palm_redetect.py` 추가: `--palm-redetect-every` sweep CSV/JSON 생성.
 - `tools/benchmark_dataset.py --debug-dir` 추가: landmark 오차 큰 프레임 overlay 자동 저장.
 - `tools/capture_dataset.py`에 session/label/notes manifest 기록 추가.
+- `tools/calibrate_npu_landmarks.py` + `--landmark-correction` 추가: CPU baseline 기준 NPU landmark affine 보정.
 
 빠른 재현:
 
@@ -19,6 +20,8 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redet
 python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 --backends cpu-baseline,npu-full
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --debug-dir /tmp/air_drum_debug
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --async-palm --frame-interval-ms 16.7
+python3 tools/calibrate_npu_landmarks.py --output models/npu_landmark_correction.dataset.json
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --landmark-correction models/npu_landmark_correction.dataset.json
 ```
 
 ## 2026-04-17 세션 #4 결과

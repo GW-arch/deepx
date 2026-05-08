@@ -90,6 +90,7 @@ flowchart LR
 - [x] `tools/sweep_palm_redetect.py`: `--palm-redetect-every` 값(예: 0,1,2,3,5,10)을 batch로 실행해 CSV/JSON 생성.
 - [x] `tools/benchmark_dataset.py --debug-dir`: landmark 오차가 큰 frame의 green/reference vs red/test overlay PNG와 manifest 저장.
 - [x] `tools/capture_dataset.py` manifest 기록: session/label/notes와 frame range를 `capture_manifest.json`에 누적.
+- [x] `tools/calibrate_npu_landmarks.py` + `--landmark-correction`: CPU baseline 대비 NPU landmark affine 보정 JSON 생성 및 runtime/benchmark 적용.
 
 예:
 
@@ -99,6 +100,8 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redet
 python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 --backends cpu-baseline,npu-full
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --debug-dir /tmp/air_drum_debug
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --async-palm --frame-interval-ms 16.7
+python3 tools/calibrate_npu_landmarks.py --output models/npu_landmark_correction.dataset.json
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --landmark-correction models/npu_landmark_correction.dataset.json
 ```
 
 ### Phase 6 — Palm NPU 통합 (속도 확인, 양자화 품질 실패)

@@ -105,6 +105,73 @@ class _LandmarkSmoother:
         self._prev.clear()
 
 
+class _LandmarkCorrector:
+    """Apply a small learned xy correction to NPU landmarks.
+
+    Correction JSON schema (version 1):
+      {
+        "type": "affine_xy",
+        "labels": {
+          "Right": [
+            {"matrix": [[a, b, c], [d, e, f]], "n": 90},  # lm0
+            ...
+          ],
+          "Left": [...]
+        }
+      }
+
+    x' = a*x + b*y + c,  y' = d*x + e*y + f
+    """
+
+    def __init__(self, path: str) -> None:
+        p = Path(path)
+        if not p.is_file():
+            raise FileNotFoundError(f"Landmark correction JSON not found: {path}")
+        raw = json.loads(p.read_text(encoding="utf-8"))
+        if raw.get("type") != "affine_xy":
+            raise ValueError(f"Unsupported landmark correction type: {raw.get('type')!r}")
+        labels = raw.get("labels", {})
+        if not isinstance(labels, dict) or not labels:
+            raise ValueError("Landmark correction JSON must contain a non-empty 'labels' object")
+        self.path = str(p)
+        self.metadata = raw
+        self._labels: dict[str, list[np.ndarray]] = {}
+        for label, transforms in labels.items():
+            if not isinstance(transforms, list) or len(transforms) < 21:
+                raise ValueError(f"Correction for label {label!r} must contain at least 21 transforms")
+            mats: list[np.ndarray] = []
+            for i, item in enumerate(transforms[:21]):
+                mat = np.asarray(item.get("matrix"), dtype=np.float64)
+                if mat.shape != (2, 3):
+                    raise ValueError(
+                        f"Correction matrix for label={label!r}, landmark={i} must be 2x3"
+                    )
+                mats.append(mat)
+            self._labels[str(label)] = mats
+
+    def apply(self, lms_list: list[_HandLms], handed: list[_Handedness]) -> list[_HandLms]:
+        corrected: list[_HandLms] = []
+        for i, hlm in enumerate(lms_list):
+            label = ""
+            if i < len(handed):
+                label = str(handed[i].classification[0].label)
+            mats = self._labels.get(label) or self._labels.get("__all__")
+            if not mats:
+                corrected.append(hlm)
+                continue
+            new_lms: list[_Lm] = []
+            for j, lm in enumerate(hlm.landmark):
+                if j < len(mats):
+                    m = mats[j]
+                    x = float(m[0, 0] * lm.x + m[0, 1] * lm.y + m[0, 2])
+                    y = float(m[1, 0] * lm.x + m[1, 1] * lm.y + m[1, 2])
+                    new_lms.append(_Lm(x, y, lm.z))
+                else:
+                    new_lms.append(_Lm(lm.x, lm.y, lm.z))
+            corrected.append(_HandLms(tuple(new_lms)))
+        return corrected
+
+
 # --- CPU: MediaPipe ---
 
 
@@ -694,6 +761,7 @@ class FullNpuHandsTracker:
         palm_score_thresh: float = 0.5,
         palm_redetect_every: int = 0,
         async_palm: bool = False,
+        landmark_correction_path: Optional[str] = None,
     ) -> None:
         from palm_decode import generate_ssd_anchors
         from palm_letterbox import rgb_uint8_to_palm_input_tensor  # noqa: F811
@@ -778,6 +846,11 @@ class FullNpuHandsTracker:
         # Public per-frame timing snapshot for benchmark tools.
         self.last_profile: dict[str, Any] = {}
         self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
+        self._landmark_corrector = (
+            _LandmarkCorrector(landmark_correction_path)
+            if landmark_correction_path and str(landmark_correction_path).strip()
+            else None
+        )
 
     def _ensure_imports(self) -> None:
         if self._decode is None:
@@ -981,6 +1054,7 @@ class FullNpuHandsTracker:
             "palm_redetect_every": self._PALM_REDETECT_EVERY,
             "async_palm": self._async_palm,
             "async_pending": False,
+            "landmark_correction": self._landmark_corrector is not None,
         }
         ih, iw = rgb.shape[:2]
 
@@ -1086,6 +1160,9 @@ class FullNpuHandsTracker:
             smoothed = self._smoother.smooth(i, hlm.landmark)
             lms_list[i] = _HandLms(smoothed)
 
+        if self._landmark_corrector is not None:
+            lms_list = self._landmark_corrector.apply(lms_list, handed)
+
         return HandTrackingResult(lms_list, handed)
 
     def close(self) -> None:
@@ -1112,6 +1189,7 @@ def create_tracker(
     hand_tflite: Optional[str] = None,
     palm_redetect_every: int = 0,
     async_palm: bool = False,
+    landmark_correction: Optional[str] = None,
 ) -> HandTracker:
     b = backend.strip().lower()
     if b == "cpu":
@@ -1200,5 +1278,10 @@ def create_tracker(
             max_hands=max_hands,
             palm_redetect_every=palm_redetect_every,
             async_palm=async_palm,
+            landmark_correction_path=(
+                landmark_correction
+                if b not in ("cpu-baseline", "cpu_baseline")
+                else None
+            ),
         )
     raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | npu | npu-full)")

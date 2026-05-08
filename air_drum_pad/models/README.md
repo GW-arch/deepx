@@ -113,6 +113,8 @@ export DX_COM='dx_com --your-flags-here'   # 예시 — 실제 플래그는 DEEP
 ```bash
 export DXNN=/path/to/hand_landmark_lite.dxnn
 ./scripts/run_npu_piano.sh
+# 또는 정식 Palm+Hand 파이프라인(+보정 JSON 자동 적용)
+./scripts/run_npu_full_piano.sh
 # 또는 (npu-full: palm TFLite + hand NPU)
 python3 main.py --backend npu-full \
   --palm-tflite models/vendor/palm_detection_lite.tflite \
@@ -129,6 +131,26 @@ python3 main.py --backend npu \
 ```
 
 모델 정보 확인: `parse_model -m ./hand_landmark_lite.dxnn` (DX-RT 도구).
+
+### NPU landmark 보정(JSON)
+
+INT8 NPU hand landmark가 CPU TFLite(float32) 대비 일정한 xy 편향을 보일 때, 저장된 dataset으로 affine 보정을 fit할 수 있습니다.
+
+```bash
+python3 tools/calibrate_npu_landmarks.py \
+  --output models/npu_landmark_correction.dataset.json
+
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --landmark-correction models/npu_landmark_correction.dataset.json
+
+python3 main.py --backend npu-full \
+  --palm-tflite models/vendor/palm_detection_lite.tflite \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
+  --landmark-correction models/npu_landmark_correction.dataset.json
+```
+
+현재 저장소의 `models/npu_landmark_correction.dataset.json`은 `dataset/` 90프레임으로 fit한 예시입니다. 같은 dataset에서는 평균 normalized xy error가 Right `0.0270→0.0102`, Left `0.0256→0.0092`로 감소합니다. 단, dataset-specific calibration이므로 새 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다.
 
 ## 레이아웃 JSON 키 요약
 

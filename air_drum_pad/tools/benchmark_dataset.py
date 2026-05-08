@@ -44,6 +44,7 @@ PROFILE_KEYS = (
     "num_detections",
     "num_hands",
     "async_pending",
+    "landmark_correction",
 )
 
 HAND_CONNECTIONS = (
@@ -80,6 +81,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--palm-tflite", type=str, default="", help="Palm TFLite path")
     p.add_argument("--palm-dxnn", type=str, default="", help="Palm .dxnn path (not recommended)")
     p.add_argument("--hand-tflite", type=str, default="", help="Hand landmark TFLite path")
+    p.add_argument(
+        "--landmark-correction",
+        type=str,
+        default="",
+        help="NPU landmark correction JSON (applied to npu-full only).",
+    )
     p.add_argument(
         "--palm-redetect-every",
         type=int,
@@ -192,6 +199,7 @@ def make_tracker(backend: str, args: argparse.Namespace):
         hand_tflite=args.hand_tflite.strip() or None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
+        landmark_correction=args.landmark_correction.strip() or None,
     )
 
 
@@ -612,6 +620,7 @@ def main() -> int:
         "palm_redetect_every": args.palm_redetect_every,
         "async_palm": args.async_palm,
         "frame_interval_ms": args.frame_interval_ms,
+        "landmark_correction": args.landmark_correction.strip() or None,
         "summary": summary,
         "compare_ref": ref_backend,
         "landmark_comparison": comparisons,

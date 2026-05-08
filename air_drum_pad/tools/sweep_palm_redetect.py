@@ -42,6 +42,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--palm-tflite", type=str, default="")
     p.add_argument("--palm-dxnn", type=str, default="")
     p.add_argument("--hand-tflite", type=str, default="")
+    p.add_argument("--landmark-correction", type=str, default="")
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--runs", type=int, default=1)
     p.add_argument("--limit", type=int, default=0)
@@ -99,7 +100,14 @@ def build_benchmark_cmd(args: argparse.Namespace, value: int, json_path: Path) -
         cmd += ["--compare-ref", args.compare_ref.strip()]
     if args.async_palm:
         cmd += ["--async-palm"]
-    for opt in ("dxnn", "dxnn_layout", "palm_tflite", "palm_dxnn", "hand_tflite"):
+    for opt in (
+        "dxnn",
+        "dxnn_layout",
+        "palm_tflite",
+        "palm_dxnn",
+        "hand_tflite",
+        "landmark_correction",
+    ):
         val = getattr(args, opt)
         if val.strip():
             cmd += ["--" + opt.replace("_", "-"), val.strip()]

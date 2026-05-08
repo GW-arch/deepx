@@ -117,6 +117,10 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --debug-dir /tmp/air_drum_debug --debug-top-k 10
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --async-palm --frame-interval-ms 16.7
+python3 tools/calibrate_npu_landmarks.py \
+  --output models/npu_landmark_correction.dataset.json
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --landmark-correction models/npu_landmark_correction.dataset.json
 ```
 
 현재 `dataset/` 90프레임에서 확인한 예시 결과(Orange Pi 5 Plus, DX-RT/dx_engine 1.1.4):
@@ -134,6 +138,15 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 |----|-----------:|---------------:|--------------:|---------:|---------:|
 | Right | 90 | 0.0270 | 0.0336 | 0.0532 | 0.1593 |
 | Left | 83 | 0.0256 | 0.0353 | 0.0457 | 0.0734 |
+
+NPU landmark affine 보정(`models/npu_landmark_correction.dataset.json`) 적용 후, 같은 90프레임 training set:
+
+| 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
+|----|-----------:|---------------:|--------------:|---------:|---------:|
+| Right | 90 | **0.0102** | **0.0112** | **0.0223** | 0.1701 |
+| Left | 83 | **0.0092** | **0.0090** | **0.0193** | **0.0437** |
+
+> 보정은 평균/손끝 오차를 약 60% 이상 줄이지만, 현재 값은 동일 dataset에 fit/eval한 결과입니다. 데모 기본값으로 쓰기 전에 별도 capture set으로 hold-out 검증이 필요합니다.
 
 CSV/JSON 저장:
 

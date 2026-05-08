@@ -149,6 +149,16 @@ def parse_args() -> argparse.Namespace:
             "그 사이 이전 ROI로 hand landmark를 계속 추적합니다."
         ),
     )
+    p.add_argument(
+        "--landmark-correction",
+        type=str,
+        default="",
+        metavar="PATH",
+        help=(
+            "npu-full 실험용: CPU baseline 기준으로 학습한 NPU landmark affine 보정 JSON. "
+            "tools/calibrate_npu_landmarks.py 로 생성."
+        ),
+    )
     return p.parse_args()
 
 
@@ -231,6 +241,9 @@ def main() -> int:
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
+        landmark_correction=(
+            args.landmark_correction if args.landmark_correction.strip() else None
+        ),
     )
 
     fps_t0 = time.perf_counter()

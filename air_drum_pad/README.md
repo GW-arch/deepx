@@ -63,7 +63,7 @@ python3 main.py --backend npu --piano --camera 0 \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json
 ```
 
-> **스크립트로 실행:** `scripts/run_cpu_piano.sh` 또는 `scripts/run_npu_piano.sh` 를 사용하면 환경변수(`DISPLAY`, `XAUTHORITY`)를 자동으로 설정합니다.
+> **스크립트로 실행:** `scripts/run_cpu_piano.sh`, `scripts/run_npu_piano.sh`(dual-halves), `scripts/run_npu_full_piano.sh`(Palm+Hand 정식 파이프라인, correction 자동 적용 가능)를 사용하면 환경변수(`DISPLAY`, `XAUTHORITY`)를 자동으로 설정합니다.
 
 ### CPU vs CPU+NPU 비교
 
@@ -111,6 +111,7 @@ python3 main.py --backend npu-full \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
   --palm-tflite models/vendor/palm_detection_lite.tflite \
+  --landmark-correction models/npu_landmark_correction.dataset.json \
   --max-hands 2
 ```
 
@@ -139,12 +140,20 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --async-palm --frame-interval-ms 16.7
 
+# NPU landmark 보정 생성(CPU baseline 기준) 및 보정 적용 benchmark
+python3 tools/calibrate_npu_landmarks.py \
+  --output models/npu_landmark_correction.dataset.json
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --landmark-correction models/npu_landmark_correction.dataset.json
+
 # CSV/JSON 저장
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --csv /tmp/air_drum_bench.csv --json /tmp/air_drum_bench.json
 ```
 
 `--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`과 `--async-palm`은 지연을 줄이는 **실험 옵션**입니다.
+
+`--landmark-correction`은 현재 dataset에서 학습한 NPU→CPU affine xy 보정입니다. 90프레임 training set 기준 `npu-full` 평균 landmark 오차가 Right `0.0270→0.0102`, Left `0.0256→0.0092`로 줄었습니다. 단, dataset-specific calibration이므로 다른 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다.
 
 #### 품질 체크 / 회귀 테스트
 
@@ -226,6 +235,7 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | `tools/smoke_palm_interpreter.py` | Palm TFLite I/O 스모크 테스트 |
 | `tools/compile_dxnn.sh` | DX-COM 호출 래퍼 (`DX_COM` 환경변수 지원) |
 | `tools/benchmark_dataset.py` | 저장된 `dataset/frame_*.png`로 백엔드 지연·landmark 오차 비교, 오차 overlay 저장 |
+| `tools/calibrate_npu_landmarks.py` | CPU baseline 기준 NPU landmark affine 보정 JSON 생성 |
 | `tools/sweep_palm_redetect.py` | `--palm-redetect-every` 값을 sweep해 지연-오차 곡선 CSV/JSON 생성 |
 | `tools/capture_dataset.py` | SPACE → delay → burst 방식의 데이터셋 캡처, manifest 기록 |
 | `tools/gen_instrument_diagrams.py` | 악기 매핑 다이어그램 PNG 생성 (matplotlib) |
