@@ -1,10 +1,24 @@
 # 다음 세션 실험 가이드 — Palm + Hand NPU 파이프라인
 
+## 2026-05-08 추가 구현 결과
+
+- `tools/benchmark_dataset.py` 추가: `dataset/frame_*.png`를 재생해 `cpu-baseline`/`npu-full` 지연, palm/hand 세부 시간, landmark 오차를 반복 측정.
+- `FullNpuHandsTracker.last_profile` 및 `--palm-redetect-every N` 추가: 기본은 `0`(매 프레임 palm), `N>0`은 palm skip/ROI tracking 실험.
+- `npu-full`의 palm 자동 탐색을 **TFLite 우선**으로 변경. Palm .dxnn은 score head 양자화 실패가 알려져 있으므로 `--palm-dxnn` 명시 시에만 실험적으로 사용.
+
+빠른 재현:
+
+```bash
+cd ~/deepx/air_drum_pad
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+```
+
 ## 2026-04-17 세션 #4 결과
 
 - **커밋:** 82aab86 (`main`) — `FullNpuHandsTracker` 가 `palm_dxnn_path` / `palm_tflite_path` 둘 다 지원
   - `--palm-dxnn` CLI 플래그 추가 (`main.py`)
-  - `create_tracker()` 자동 탐색: `.dxnn` → `.tflite` 우선순위
+  - 당시 `create_tracker()` 자동 탐색은 `.dxnn` → `.tflite` 우선순위였으나, 2026-05-08 이후 기본은 TFLite 우선으로 변경
   - Palm .dxnn 레이턴시: **12 ms** (vs TFLite CPU 95 ms) — 속도는 ~8× 빠름
   - **그러나 Palm .dxnn INT8 양자화로 score head 파괴** — ONNX↔NPU score 상관 -0.11, max sigmoid 0.01 vs ONNX 0.90
   - 시도한 조합: ema/minmax calibration, `--aggressive_partitioning` (0 CPU groups), `--opt_level 0`/`1` — 모두 실패

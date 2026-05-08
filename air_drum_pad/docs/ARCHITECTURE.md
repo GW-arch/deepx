@@ -60,7 +60,7 @@
 | Hand Landmark | 224×224 NHWC uint8 | **NPU** (.dxnn) | INT8 PTQ | 정상 동작 |
 | Hand Landmark | 224×224 NHWC float32 | CPU (TFLite) | 없음 (float32) | `cpu-baseline` 백엔드용 |
 
-**Palm Detection (매 프레임):** `npu-full` 및 `cpu-baseline` 모드에서 palm detection을 **매 프레임** 실행합니다. 이전에는 landmark 기반 ROI 트래킹으로 5프레임에 1번만 palm을 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 ROI 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01). `_PALM_REDETECT_EVERY = 0` (항상 실행).
+**Palm Detection (기본 매 프레임):** `npu-full` 및 `cpu-baseline` 모드에서 기본값은 palm detection을 **매 프레임** 실행합니다. 이전에는 landmark 기반 ROI 트래킹으로 5프레임에 1번만 palm을 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 ROI 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01). `--palm-redetect-every 0` (기본, 항상 실행). `N>0`은 palm skip/ROI tracking 실험 옵션입니다.
 
 **백엔드 비교:**
 

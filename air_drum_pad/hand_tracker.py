@@ -4,6 +4,7 @@ from __future__ import annotations
 import json
 import math
 import sys
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, List, Optional, Protocol, Sequence, runtime_checkable
@@ -690,6 +691,7 @@ class FullNpuHandsTracker:
         hand_layout_path: Optional[str],
         max_hands: int,
         palm_score_thresh: float = 0.5,
+        palm_redetect_every: int = 0,
     ) -> None:
         from palm_decode import generate_ssd_anchors
         from palm_letterbox import rgb_uint8_to_palm_input_tensor  # noqa: F811
@@ -763,7 +765,9 @@ class FullNpuHandsTracker:
         # Each entry: (center_x_px, center_y_px, roi_size_px, rotation_rad)
         self._prev_rois: list[tuple[float, float, float, float]] = []
         self._palm_skip_count: int = 0
-        self._PALM_REDETECT_EVERY: int = 0  # 0 = always run palm (no tracking)
+        self._PALM_REDETECT_EVERY: int = max(0, int(palm_redetect_every))
+        # Public per-frame timing snapshot for benchmark tools.
+        self.last_profile: dict[str, Any] = {}
         self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
 
     def _ensure_imports(self) -> None:
@@ -860,8 +864,29 @@ class FullNpuHandsTracker:
         new_roi = self._roi_from_landmarks(lm21, iw, ih)
         return _HandLms(lm21), new_roi
 
+    def _profiled_result(
+        self,
+        result: HandTrackingResult,
+        profile: dict[str, Any],
+        t0: float,
+    ) -> HandTrackingResult:
+        profile["total_ms"] = (time.perf_counter() - t0) * 1000.0
+        profile["num_hands"] = len(result.multi_hand_landmarks or [])
+        self.last_profile = profile
+        return result
+
     def process(self, rgb: np.ndarray) -> HandTrackingResult:
         self._ensure_imports()
+        t_total0 = time.perf_counter()
+        profile: dict[str, Any] = {
+            "mode": "palm",
+            "palm_ms": 0.0,
+            "hand_ms": 0.0,
+            "total_ms": 0.0,
+            "num_detections": 0,
+            "num_hands": 0,
+            "palm_redetect_every": self._PALM_REDETECT_EVERY,
+        }
         ih, iw = rgb.shape[:2]
 
         # --- Try tracking from previous ROIs (skip palm) ---
@@ -871,10 +896,13 @@ class FullNpuHandsTracker:
         )
 
         if use_tracking:
+            profile["mode"] = "tracking"
             lms_list: list[_HandLms] = []
             new_rois: list[tuple[float, float, float, float]] = []
             for roi in self._prev_rois:
+                t_hand0 = time.perf_counter()
                 hlm, nroi = self._run_hand_from_roi(rgb, roi, iw, ih)
+                profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
                 if hlm is not None:
                     lms_list.append(hlm)
                     new_rois.append(nroi)
@@ -882,17 +910,25 @@ class FullNpuHandsTracker:
             if lms_list:
                 self._prev_rois = new_rois
                 self._palm_skip_count += 1
-                return self._finalize(lms_list)
+                return self._profiled_result(
+                    self._finalize(lms_list),
+                    profile,
+                    t_total0,
+                )
 
             # Tracking lost — fall through to palm detection
             self._prev_rois.clear()
 
         # --- Full palm detection ---
+        profile["mode"] = "palm"
         self._palm_skip_count = 0
+        t_palm0 = time.perf_counter()
         dets = self._run_palm(rgb)
+        profile["palm_ms"] = (time.perf_counter() - t_palm0) * 1000.0
+        profile["num_detections"] = int(dets.shape[0])
         if dets.shape[0] == 0:
             self._prev_rois.clear()
-            return HandTrackingResult([], [])
+            return self._profiled_result(HandTrackingResult([], []), profile, t_total0)
 
         # Sort by score descending, take top max_hands
         order = np.argsort(-dets[:, 0])
@@ -901,9 +937,11 @@ class FullNpuHandsTracker:
         lms_list = []
         new_rois = []
         for det in dets:
+            t_hand0 = time.perf_counter()
             patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
             result = self._hand_tracker.process(patch)
             if not result.multi_hand_landmarks:
+                profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
                 continue
             hlm = result.multi_hand_landmarks[0]
             lm_flat = np.array(
@@ -916,9 +954,10 @@ class FullNpuHandsTracker:
             )
             lms_list.append(_HandLms(lm21))
             new_rois.append(self._roi_from_landmarks(lm21, iw, ih))
+            profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
 
         self._prev_rois = new_rois
-        return self._finalize(lms_list)
+        return self._profiled_result(self._finalize(lms_list), profile, t_total0)
 
     def _finalize(self, lms_list: list[_HandLms]) -> HandTrackingResult:
         """Assign handedness, sort left-to-right, apply EMA smoothing."""
@@ -962,6 +1001,7 @@ def create_tracker(
     palm_tflite: Optional[str] = None,
     palm_dxnn: Optional[str] = None,
     hand_tflite: Optional[str] = None,
+    palm_redetect_every: int = 0,
 ) -> HandTracker:
     b = backend.strip().lower()
     if b == "cpu":
@@ -1004,18 +1044,19 @@ def create_tracker(
         elif palm_tflite and palm_tflite.strip():
             resolved_palm_tflite = palm_tflite.strip()
         else:
-            # Auto-detect: prefer .dxnn (NPU), fall back to .tflite (CPU)
+            # Auto-detect: prefer TFLite (CPU, float32).  Palm .dxnn is kept
+            # only for explicit experiments because INT8 quantization breaks
+            # the score head on the current model.
             base = Path(__file__).resolve().parent / "models" / "vendor"
-            default_dxnn = base / "palm_detection_lite.dxnn"
             default_tflite = base / "palm_detection_lite.tflite"
-            if default_dxnn.is_file():
-                resolved_palm_dxnn = str(default_dxnn)
-            elif default_tflite.is_file():
+            if default_tflite.is_file():
                 resolved_palm_tflite = str(default_tflite)
             else:
                 raise SystemExit(
-                    "npu-full 백엔드: --palm-dxnn 또는 --palm-tflite 을 지정하거나 "
-                    f"{default_dxnn} 또는 {default_tflite} 을 배치하세요."
+                    "npu-full 백엔드: --palm-tflite 을 지정하거나 "
+                    f"{default_tflite} 을 배치하세요. "
+                    "Palm .dxnn은 양자화 품질 문제로 자동 선택하지 않습니다 "
+                    "(실험 시 --palm-dxnn 명시)."
                 )
 
         # --- Resolve hand landmark model ---
@@ -1047,5 +1088,6 @@ def create_tracker(
             hand_tflite_path=resolved_hand_tflite,
             hand_layout_path=dxnn_layout,
             max_hands=max_hands,
+            palm_redetect_every=palm_redetect_every,
         )
     raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | npu | npu-full)")

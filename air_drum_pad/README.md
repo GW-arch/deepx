@@ -23,14 +23,10 @@
 ### 피아노 모드
 
 - 실행: `python3 main.py --piano --camera 0`  
-  **`--instruments` 없이** 켜면: **양손 손목 사이 거리**로 음역을 잡습니다.  
-  - 손을 **가깝게** 두면 → 왼손·오른손 모두 **중음역**에 가깝게(겹치는 느낌).  
-  - 손을 **멀리** 벌리면 → **왼손(Left)은 더 낮은 펜타토닉**, **오른손(Right)은 더 높은 펜타토닉**으로 벌어집니다.  
-  - MediaPipe **Left / Right** 라벨로 좌우를 구분합니다(셀카 미러면 체감이 반대일 수 있음).  
-  - 화면 아래에 `d=… L:… R:…` 힌트가 뜹니다.
-- **고정 음 배열**을 쓰려면: `instruments.piano.example.json` 참고 후  
+  **`--instruments` 없이** 켜면 기본적으로 `instruments.piano.example.json`의 **고정 10키 매핑(C4–E5)** 을 사용합니다.
+- 다른 고정 음 배열을 쓰려면: `instruments.piano.example.json` 참고 후
   `python3 main.py --piano --instruments 내피아노.json --camera 0`  
-  (`slots` 값은 `C4`, `D#5`, `Bb3` 같은 **음명** 10개 — 이 경우 거리 자동 음역은 끔)
+  (`slots` 값은 `C4`, `D#5`, `Bb3` 같은 **음명** 10개)
 - 음색은 짧은 **합성** 사인파(실제 샘플 피아노는 아님).
 - 사용 가능 음명(기본 10개 나열): `python3 main.py --piano --list-instruments`
 
@@ -118,7 +114,25 @@ python3 main.py --backend npu-full \
   --max-hands 2
 ```
 
-`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. `--palm-dxnn` 플래그도 존재하나 양자화 품질 문제로 **사용 비권장**.
+`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. `--palm-dxnn` 플래그도 존재하나 양자화 품질 문제로 **명시적으로 지정한 실험에서만 사용**하세요.
+
+#### 데이터셋 기반 오프라인 벤치마크
+
+라이브 카메라 없이 `dataset/frame_*.png`를 반복 재생해 백엔드별 지연과 landmark 오차를 비교합니다.
+
+```bash
+# 기본: cpu-baseline vs npu-full, 동일 palm+ROI 파이프라인 비교
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
+
+# palm skip/ROI tracking 실험: palm 1회 후 최대 5프레임은 landmark ROI로 추적
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+
+# CSV/JSON 저장
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --csv /tmp/air_drum_bench.csv --json /tmp/air_drum_bench.json
+```
+
+`--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`은 지연을 줄이는 **실험 옵션**입니다.
 
 NPU 예시는 `models/README.md` 와 `scripts/run_npu_piano.sh` 참고.  
 요약: **MediaPipe TFLite → ONNX** (`tools/export_mediapipe_hand_onnx.py`) → **DX-COM** (SNU 서버 `tools/compile_server_snu.sh`) → 보드에서 `--backend npu-full --palm-tflite … --dxnn …`.
@@ -186,5 +200,7 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 | `tools/palm_mp_spec.py` | MediaPipe palm detection 그래프 상수 |
 | `tools/smoke_palm_interpreter.py` | Palm TFLite I/O 스모크 테스트 |
 | `tools/compile_dxnn.sh` | DX-COM 호출 래퍼 (`DX_COM` 환경변수 지원) |
+| `tools/benchmark_dataset.py` | 저장된 `dataset/frame_*.png`로 백엔드 지연·landmark 오차 비교 |
+| `tools/capture_dataset.py` | SPACE → delay → burst 방식의 데이터셋 캡처 |
 | `tools/gen_instrument_diagrams.py` | 악기 매핑 다이어그램 PNG 생성 (matplotlib) |
 | `instruments/` | 생성된 매핑 다이어그램 이미지 (drum, piano 등) |

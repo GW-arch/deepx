@@ -131,6 +131,16 @@ def parse_args() -> argparse.Namespace:
         metavar="PATH",
         help="cpu-baseline 백엔드: hand landmark TFLite 경로 (기본: models/vendor/hand_landmark_lite.tflite 자동탐색)",
     )
+    p.add_argument(
+        "--palm-redetect-every",
+        type=int,
+        default=0,
+        metavar="N",
+        help=(
+            "cpu-baseline/npu-full 실험용: palm detection 후 N프레임 동안 landmark 기반 ROI 추적만 수행. "
+            "0이면 매 프레임 palm 실행(기본, 드리프트 최소)."
+        ),
+    )
     return p.parse_args()
 
 
@@ -211,6 +221,7 @@ def main() -> int:
         palm_tflite=args.palm_tflite if args.palm_tflite.strip() else None,
         palm_dxnn=args.palm_dxnn if args.palm_dxnn.strip() else None,
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
+        palm_redetect_every=args.palm_redetect_every,
     )
 
     fps_t0 = time.perf_counter()
@@ -425,4 +436,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

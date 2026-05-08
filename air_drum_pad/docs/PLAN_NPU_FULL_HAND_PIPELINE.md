@@ -80,11 +80,25 @@ flowchart LR
 
 > `cpu-baseline`은 `npu-full`과 동일한 파이프라인(palm → ROI → hand landmark)을 **모두 CPU TFLite (float32)** 로 실행합니다. NPU 가속 효과를 정확히 비교할 수 있는 기준선입니다.
 
+### Phase 8 — Dataset replay benchmark / palm-skip 실험 도구
+
+- [x] `tools/benchmark_dataset.py`: `dataset/frame_*.png`를 카메라 대신 재생해 백엔드별 지연(mean/P95/min/max), palm/hand 세부 프로파일, 손별 landmark 오차를 출력.
+- [x] `FullNpuHandsTracker.last_profile`: 프레임별 `palm_ms`, `hand_ms`, `mode`(palm/tracking), 검출 수 기록.
+- [x] `--palm-redetect-every N` CLI 플래그: 기본 `0`(매 프레임 palm, 정확도 우선), `N>0`은 palm skip/ROI tracking 실험.
+- [x] `npu-full` 자동 palm 선택을 TFLite 우선으로 변경. Palm .dxnn은 score head 양자화 실패가 알려져 있으므로 `--palm-dxnn`을 명시한 실험에서만 사용.
+
+예:
+
+```bash
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+```
+
 ### Phase 6 — Palm NPU 통합 (속도 확인, 양자화 품질 실패)
 
 - [x] `FullNpuHandsTracker` 에 `palm_dxnn_path` 지원 — `dx_engine.InferenceEngine` 로 NPU 추론.
 - [x] 전처리: letterbox NHWC [0,1] → ×255 → uint8 (Div(255) NPU 내장).
-- [x] `create_tracker()` 자동 탐색: `.dxnn` → `.tflite` 우선순위.
+- [x] `--palm-dxnn` 명시 실험 경로 지원. 초기에는 `.dxnn` 자동 탐색을 시도했으나, score head 양자화 실패 확정 후 기본 자동 탐색은 TFLite 우선으로 변경.
 - [x] `--palm-dxnn` CLI 플래그 (`main.py`).
 - [x] 벤치마크: Palm NPU 12 ms vs TFLite CPU 95 ms (~8× 속도 개선).
 - [x] **양자화 품질 검증: score head 파괴 확인** — ONNX↔NPU score 상관 -0.11, box 상관 0.81.

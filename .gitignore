@@ -12,6 +12,7 @@ venv/
 .vscode/
 *.swp
 .DS_Store
+.omx/
 
 # Logs / local / data
 *.log

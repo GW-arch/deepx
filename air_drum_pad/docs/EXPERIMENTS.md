@@ -101,7 +101,39 @@
 > 
 > **cpu-baseline vs npu-full**: 동일 파이프라인이지만 hand landmark를 CPU TFLite(float32) vs NPU .dxnn(INT8)로 실행. palm이 전체 시간의 ~90%를 차지하므로 NPU 가속 효과는 hand landmark 단독으로 비교해야 합니다 (~5ms TFLite vs ~8ms NPU).
 
-> **Palm skip 최적화**: 이전 프레임 랜드마크에서 다음 ROI를 예측하여 palm detection을 5프레임에 1회만 실행합니다. 트래킹 중에는 NPU hand landmark만 돌리므로 대부분의 프레임에서 ~16ms로 동작합니다. 트래킹 실패 시 자동으로 palm re-detection을 실행합니다.
+> **Palm skip 최적화는 실험 옵션입니다.** 기본값은 정확도 우선(`--palm-redetect-every 0`, 매 프레임 palm)입니다. `--palm-redetect-every 5`처럼 지정하면 이전 프레임 랜드마크에서 다음 ROI를 예측해 palm detection을 건너뛰며, 지연은 줄지만 NPU INT8 편향이 누적될 수 있어 dataset benchmark로 오차를 반드시 확인합니다.
+
+### 8.4 Offline dataset benchmark (2026-05-08)
+
+도구:
+
+```bash
+cd air_drum_pad
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
+```
+
+현재 `dataset/` 90프레임에서 확인한 예시 결과(Orange Pi 5 Plus, DX-RT/dx_engine 1.1.4):
+
+| 구성 | 평균 | P95 | 세부 프로파일 | 비고 |
+|------|-----:|----:|----------------|------|
+| `cpu-baseline`, palm every frame | 84.40 ms | 86.78 ms | palm 39.26 ms + hand 44.80 ms | CPU TFLite 기준 |
+| `npu-full`, palm every frame | 50.32 ms | 54.52 ms | palm 40.93 ms + hand 9.13 ms | 같은 palm+ROI, hand만 NPU |
+| `npu-full`, `--palm-redetect-every 5` (20프레임 smoke) | 15.29 ms | 50.96 ms | palm frames 3/20, tracking frames 17/20 | 지연 개선, 정확도 회귀 확인 필요 |
+
+`npu-full` vs `cpu-baseline` landmark 오차(90프레임, normalized xy):
+
+| 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
+|----|-----------:|---------------:|--------------:|---------:|---------:|
+| Right | 90 | 0.0270 | 0.0336 | 0.0532 | 0.1593 |
+| Left | 83 | 0.0256 | 0.0353 | 0.0457 | 0.0734 |
+
+CSV/JSON 저장:
+
+```bash
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --csv /tmp/air_drum_bench.csv --json /tmp/air_drum_bench.json
+```
 
 ---
 
