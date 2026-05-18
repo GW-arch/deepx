@@ -1,0 +1,1042 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>deepx / air_drum_pad 기능 분석 슬라이드</title>
+  <style>
+    :root {
+      --bg: #f6f2ea;
+      --paper: #fffaf2;
+      --ink: #171717;
+      --muted: #5f6368;
+      --line: #d8d0c4;
+      --green: #116a5b;
+      --blue: #245f9f;
+      --red: #a33b3b;
+      --amber: #986300;
+      --violet: #624a8f;
+      --teal: #0b7285;
+      --shadow: 0 14px 36px rgba(22, 18, 12, 0.13);
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; min-height: 100%; }
+    body {
+      font-family: Inter, Pretendard, "Noto Sans KR", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(180deg, rgba(255,255,255,0.88), rgba(246,242,234,0.95)),
+        repeating-linear-gradient(90deg, rgba(23,23,23,0.035) 0, rgba(23,23,23,0.035) 1px, transparent 1px, transparent 48px);
+      overflow: hidden;
+      letter-spacing: 0;
+    }
+
+    .deck {
+      width: 100vw;
+      height: 100vh;
+      position: relative;
+    }
+
+    .slide {
+      display: none;
+      width: 100%;
+      height: 100%;
+      padding: 54px 64px 70px;
+      overflow: hidden;
+      background: rgba(255, 250, 242, 0.74);
+    }
+
+    .slide.active {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 22px;
+    }
+
+    .eyebrow {
+      color: var(--green);
+      font-size: 15px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+    }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      max-width: 1050px;
+      font-size: clamp(42px, 5.1vw, 72px);
+      line-height: 1.03;
+      letter-spacing: 0;
+    }
+
+    h2 {
+      font-size: clamp(34px, 3.8vw, 54px);
+      line-height: 1.06;
+      letter-spacing: 0;
+    }
+
+    h3 {
+      font-size: 22px;
+      line-height: 1.2;
+      letter-spacing: 0;
+    }
+
+    p, li, td, th {
+      font-size: 18px;
+      line-height: 1.52;
+    }
+
+    .lead {
+      max-width: 1000px;
+      color: #303030;
+      font-size: 23px;
+      line-height: 1.48;
+    }
+
+    .small {
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.45;
+    }
+
+    .content {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 20px;
+    }
+
+    .grid {
+      display: grid;
+      gap: 16px;
+    }
+
+    .cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+
+    .panel {
+      background: rgba(255, 255, 255, 0.76);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 18px 20px;
+      box-shadow: 0 5px 16px rgba(30, 24, 16, 0.06);
+    }
+
+    .panel h3 { margin-bottom: 8px; }
+    .panel p, .panel li { font-size: 16px; }
+    .panel ul { margin: 8px 0 0 18px; padding: 0; }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      min-height: 28px;
+      padding: 3px 9px;
+      border-radius: 999px;
+      font-size: 13px;
+      font-weight: 800;
+      border: 1px solid currentColor;
+      background: #fff;
+      white-space: nowrap;
+    }
+
+    .ready { color: var(--green); }
+    .conditional { color: var(--amber); }
+    .blocked { color: var(--red); }
+    .research { color: var(--violet); }
+    .info { color: var(--blue); }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      background: rgba(255,255,255,0.78);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 5px 16px rgba(30, 24, 16, 0.06);
+    }
+
+    th, td {
+      padding: 12px 14px;
+      border-bottom: 1px solid var(--line);
+      vertical-align: top;
+      text-align: left;
+    }
+
+    th {
+      font-size: 14px;
+      color: #2a2a2a;
+      background: #efe8dc;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }
+
+    tr:last-child td { border-bottom: 0; }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      font-size: 0.9em;
+      background: #efe8dc;
+      padding: 0.1em 0.32em;
+      border-radius: 5px;
+    }
+
+    pre {
+      margin: 0;
+      padding: 16px 18px;
+      overflow: auto;
+      color: #f6f2ea;
+      background: #202020;
+      border-radius: 8px;
+      font-size: 15px;
+      line-height: 1.5;
+      box-shadow: var(--shadow);
+    }
+
+    pre code { background: transparent; color: inherit; padding: 0; }
+
+    .hero {
+      display: grid;
+      grid-template-columns: 1.06fr 0.94fr;
+      gap: 36px;
+      align-items: center;
+    }
+
+    .image-wrap {
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: var(--shadow);
+    }
+
+    .image-wrap img {
+      display: block;
+      width: 100%;
+      max-height: 62vh;
+      object-fit: contain;
+      border-radius: 5px;
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .metric {
+      border-left: 5px solid var(--teal);
+      background: rgba(255,255,255,0.78);
+      border-radius: 8px;
+      padding: 14px 16px;
+      min-height: 116px;
+      box-shadow: 0 5px 16px rgba(30, 24, 16, 0.06);
+    }
+
+    .metric strong {
+      display: block;
+      font-size: 30px;
+      line-height: 1.05;
+      margin-bottom: 6px;
+    }
+
+    .metric span {
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.35;
+    }
+
+    .flow {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+
+    .flow .step {
+      border-top: 5px solid var(--blue);
+      background: rgba(255,255,255,0.82);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 130px;
+    }
+
+    .step .num {
+      color: var(--blue);
+      font-weight: 900;
+      font-size: 14px;
+      margin-bottom: 8px;
+      display: block;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 0.92fr 1.08fr;
+      gap: 24px;
+      align-items: center;
+    }
+
+    .footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      color: var(--muted);
+      font-size: 14px;
+      border-top: 1px solid var(--line);
+      padding-top: 12px;
+    }
+
+    .nav {
+      position: fixed;
+      left: 50%;
+      bottom: 18px;
+      transform: translateX(-50%);
+      display: flex;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    .nav button {
+      border: 1px solid #aaa097;
+      background: #fffaf2;
+      color: var(--ink);
+      border-radius: 8px;
+      min-width: 44px;
+      min-height: 36px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 3px 10px rgba(30, 24, 16, 0.1);
+    }
+
+    .nav button:hover { background: #efe8dc; }
+
+    .progress {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      height: 5px;
+      width: 0;
+      background: linear-gradient(90deg, var(--green), var(--blue), var(--amber));
+      z-index: 11;
+    }
+
+    .toc {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px 18px;
+      counter-reset: toc;
+    }
+
+    .toc div {
+      counter-increment: toc;
+      display: flex;
+      gap: 10px;
+      align-items: baseline;
+      border-bottom: 1px solid var(--line);
+      padding-bottom: 8px;
+      font-size: 18px;
+    }
+
+    .toc div::before {
+      content: counter(toc, decimal-leading-zero);
+      color: var(--green);
+      font-weight: 900;
+      font-size: 14px;
+      min-width: 28px;
+    }
+
+    .callout {
+      border-left: 7px solid var(--green);
+      background: rgba(255,255,255,0.82);
+      border-radius: 8px;
+      padding: 18px 22px;
+      box-shadow: var(--shadow);
+    }
+
+    .callout.warn { border-left-color: var(--amber); }
+    .callout.bad { border-left-color: var(--red); }
+
+    @media (max-width: 900px) {
+      body { overflow: auto; }
+      .deck { height: auto; }
+      .slide, .slide.active {
+        min-height: 100vh;
+        height: auto;
+        padding: 32px 20px 84px;
+        display: grid;
+      }
+      .hero, .split, .cols-2, .cols-3, .cols-4, .flow, .metrics, .toc {
+        grid-template-columns: 1fr;
+      }
+      .nav { left: 20px; transform: none; }
+    }
+
+    @media print {
+      body { overflow: visible; background: white; }
+      .deck { height: auto; }
+      .slide, .slide.active {
+        display: grid !important;
+        min-height: 100vh;
+        height: 100vh;
+        page-break-after: always;
+        background: white;
+      }
+      .nav, .progress { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="deck">
+    <section class="slide active">
+      <div>
+        <div class="eyebrow">Repository Capability Review</div>
+      </div>
+      <div class="hero">
+        <div>
+          <h1>deepx / air_drum_pad 실험 가능성 분석</h1>
+          <p class="lead" style="margin-top: 22px;">
+            이 레포는 air drum과 piano 데모를 실행하고, CPU/TFLite/NPU 백엔드를 비교하며,
+            데이터셋 기반 벤치마크와 NPU landmark 보정까지 수행할 수 있는 상태다.
+            단, NPU 실험은 DX-RT service와 모델 자산 상태가 실험의 관문이다.
+          </p>
+        </div>
+        <div class="image-wrap">
+          <img src="../instruments/piano_default.png" alt="Piano default mapping diagram">
+        </div>
+      </div>
+      <div class="footer">
+        <span>작성 기준: 현재 워크스페이스 `/home/orangepi/deepx`</span>
+        <span class="counter"></span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Executive Summary</div>
+        <h2>실험 가능한 상태인가?</h2>
+      </div>
+      <div class="content">
+        <div class="callout">
+          <p class="lead">
+            결론은 <strong>가능</strong>이다. CPU 기반 데모, 피아노/드럼 매핑, 단위 테스트, palm decode,
+            CPU-baseline dataset benchmark는 바로 실행 가능하다. NPU-full 실험은 모델 파일은 로컬에 있으나
+            현재 확인 시 DX-RT service가 실행 중이 아니어서 service 기동 또는 NPU 런타임 복구가 필요했다.
+          </p>
+        </div>
+        <div class="grid cols-4">
+          <div class="metric"><strong>60</strong><span>Git tracked files. 핵심 코드, 문서, 테스트, 스크립트 포함.</span></div>
+          <div class="metric"><strong>90</strong><span>현재 워크스페이스의 dataset PNG 프레임. `.gitignore` 대상.</span></div>
+          <div class="metric"><strong>18/18</strong><span>`python3 -m unittest discover -s tests -v` 통과.</span></div>
+          <div class="metric"><strong>15/15</strong><span>`tools/test_palm_decode.py` self-test 통과.</span></div>
+        </div>
+      </div>
+      <div class="footer">
+        <span>상태 구분: ready / conditional / research / blocked</span>
+        <span class="counter"></span>
+      </div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Scope</div>
+        <h2>레포 구조는 단일 프로젝트 중심</h2>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>경로</th><th>역할</th><th>실험 의미</th></tr></thead>
+          <tbody>
+            <tr><td><code>air_drum_pad/main.py</code></td><td>라이브 데모 진입점</td><td>드럼/피아노, CPU/NPU 백엔드 실행</td></tr>
+            <tr><td><code>hand_tracker.py</code></td><td>손 추적 백엔드</td><td>MediaPipe, TFLite baseline, DX-RT NPU, full palm+hand 파이프라인</td></tr>
+            <tr><td><code>strike_detector.py</code></td><td>타격 판정</td><td>손끝 하강 속도와 관절 각속도 기반 hit 검출</td></tr>
+            <tr><td><code>tools/</code></td><td>실험 도구</td><td>벤치마크, capture, model export, palm decode, sweep, calibration</td></tr>
+            <tr><td><code>tests/</code></td><td>회귀 테스트</td><td>핵심 수학/헬퍼 기능 검증</td></tr>
+            <tr><td><code>docs/</code></td><td>설계/실험 문서</td><td>아키텍처, 실험 방법, 세션 로그, 5월 8일 분석</td></tr>
+          </tbody>
+        </table>
+        <p class="small">
+          최상위 `README.md` 기준으로 현재 레포의 실질 프로젝트는 `air_drum_pad/` 하나다.
+        </p>
+      </div>
+      <div class="footer"><span>Repository map</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Readiness Matrix</div>
+        <h2>할 수 있는 일의 현재 상태</h2>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>분류</th><th>가능한 일</th><th>현재 판정</th><th>조건</th></tr></thead>
+          <tbody>
+            <tr><td>라이브 데모</td><td>Air drum, piano 실행</td><td><span class="status ready">Ready</span></td><td>카메라, 디스플레이, 오디오</td></tr>
+            <tr><td>CPU 실험</td><td>MediaPipe CPU, TFLite CPU-baseline</td><td><span class="status ready">Ready</span></td><td>Python deps, TFLite 모델</td></tr>
+            <tr><td>NPU 실험</td><td>Hand landmark `.dxnn` 실행</td><td><span class="status conditional">Conditional</span></td><td>DX-RT service, `dx_engine`, NPU reset</td></tr>
+            <tr><td>Offline benchmark</td><td>dataset replay, CSV/JSON, overlay</td><td><span class="status ready">Ready</span></td><td>현재 워크스페이스에는 dataset 존재</td></tr>
+            <tr><td>Model build</td><td>TFLite -> ONNX -> DXNN</td><td><span class="status conditional">Conditional</span></td><td>export deps, x86_64 DX-COM 또는 SNU server</td></tr>
+            <tr><td>Palm NPU</td><td>Palm `.dxnn` 속도 실험</td><td><span class="status research">Research only</span></td><td>score head 양자화 실패로 실사용 불가</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer"><span>Current practical status</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Interaction Model</div>
+        <h2>고정 패드가 아니라 손가락 움직임을 연주로 해석</h2>
+      </div>
+      <div class="split">
+        <div class="content">
+          <div class="panel">
+            <h3>타격 조건</h3>
+            <ul>
+              <li>손끝 y 방향 하강 속도 <code>vy</code>가 임계 이상</li>
+              <li>MCP/PIP/TIP 계열 관절 각속도가 임계 이상</li>
+              <li>같은 손가락 cooldown과 최소 이동량으로 jitter 억제</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>사운드 매핑</h3>
+            <ul>
+              <li>양손 x 다섯 손가락 = 10 slot</li>
+              <li>드럼은 16개 합성 percussion 중 slot 매핑</li>
+              <li>피아노는 음명 10개를 합성 tone으로 미리 렌더링</li>
+            </ul>
+          </div>
+        </div>
+        <div class="image-wrap">
+          <img src="../instruments/drum_default.png" alt="Drum default mapping diagram">
+        </div>
+      </div>
+      <div class="footer"><span>Hit detection: `InstrumentStrikeDetector`</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Live Modes</div>
+        <h2>Air drum과 piano 모두 실행 가능</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>Air drum</h3>
+            <pre><code>cd air_drum_pad
+python3 main.py --backend cpu --camera 0
+
+python3 main.py --backend npu-full --camera 0 \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
+  --palm-tflite models/vendor/palm_detection_lite.tflite</code></pre>
+          </div>
+          <div class="panel">
+            <h3>Piano</h3>
+            <pre><code>cd air_drum_pad
+python3 main.py --backend cpu --piano --camera 0
+
+./scripts/run_cpu_piano.sh
+./scripts/run_npu_piano.sh
+./scripts/run_npu_full_piano.sh</code></pre>
+          </div>
+        </div>
+        <div class="callout warn">
+          <p>
+            `--piano`를 붙이면 피아노, 붙이지 않으면 드럼이다. NPU 전용 drum 스크립트는 따로 없지만,
+            `run_npu_full_piano.sh`가 구성하는 동일 백엔드를 `--piano` 없이 실행하면 drum 경로로 동작한다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>Live commands</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Backend Matrix</div>
+        <h2>4개 백엔드가 다른 실험 질문에 답한다</h2>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>백엔드</th><th>Palm Detection</th><th>Hand Landmark</th><th>주요 용도</th></tr></thead>
+          <tbody>
+            <tr><td><code>cpu</code></td><td>MediaPipe 내장 CPU</td><td>MediaPipe 내장 CPU</td><td>추가 모델 없는 빠른 데모</td></tr>
+            <tr><td><code>cpu-baseline</code></td><td>TFLite CPU float32</td><td>TFLite CPU float32</td><td>`npu-full`과 동일 구조의 비교 기준선</td></tr>
+            <tr><td><code>npu</code></td><td>없음</td><td>NPU `.dxnn`</td><td>좌우 반분할 근사, palm 병목 제거 속도 확인</td></tr>
+            <tr><td><code>npu-full</code></td><td>TFLite CPU float32</td><td>NPU `.dxnn` INT8</td><td>정식 Palm+Hand 하이브리드 파이프라인</td></tr>
+          </tbody>
+        </table>
+        <p class="small">
+          Palm `.dxnn` 경로는 남아 있으나 알려진 양자화 실패 때문에 명시 실험용이다.
+        </p>
+      </div>
+      <div class="footer"><span>Tracking backends</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Pipeline</div>
+        <h2>`npu-full` 내부 처리 흐름</h2>
+      </div>
+      <div class="content">
+        <div class="flow">
+          <div class="step"><span class="num">01</span><h3>RGB frame</h3><p>OpenCV 카메라 프레임을 RGB로 변환한다.</p></div>
+          <div class="step"><span class="num">02</span><h3>Palm TFLite</h3><p>192x192 letterbox 입력으로 palm box와 keypoint를 얻는다.</p></div>
+          <div class="step"><span class="num">03</span><h3>ROI warp</h3><p>Palm keypoint로 회전 사각형을 만들고 224x224 hand patch를 생성한다.</p></div>
+          <div class="step"><span class="num">04</span><h3>Hand DXNN</h3><p>NPU에서 21 landmark를 추론하고 원본 좌표로 역변환한다.</p></div>
+          <div class="step"><span class="num">05</span><h3>Strike</h3><p>손끝 속도와 관절 각속도로 사운드 trigger를 만든다.</p></div>
+        </div>
+        <div class="callout">
+          <p>
+            이 구조 덕분에 CPU-baseline과 npu-full은 같은 palm/ROI 경로를 공유한다.
+            따라서 hand landmark 단계만 CPU TFLite와 NPU `.dxnn`으로 비교할 수 있다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>FullNpuHandsTracker</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Model Assets</div>
+        <h2>모델 생성과 실행 자산도 레포에 절차화되어 있다</h2>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>자산/도구</th><th>현재 역할</th><th>주의점</th></tr></thead>
+          <tbody>
+            <tr><td><code>models/vendor/*.tflite</code></td><td>MediaPipe 공개 모델 로컬 복사본</td><td>현재 워크스페이스에는 있으나 Git에는 ignore</td></tr>
+            <tr><td><code>models/vendor/*.onnx</code></td><td>DX-COM 입력용 ONNX</td><td>export 도구로 재생성 가능</td></tr>
+            <tr><td><code>models/vendor/*.dxnn</code></td><td>DX-RT 실행용 NPU 모델</td><td>보드에서 실행하려면 dxrt service 필요</td></tr>
+            <tr><td><code>models/dxcom/*.json</code></td><td>DX-COM 양자화/컴파일 설정</td><td>x86_64 컴파일 환경 또는 SNU server 필요</td></tr>
+            <tr><td><code>models/dxnn_layout.*.json</code></td><td>DXNN 입출력 레이아웃 해석</td><td>parse_model 출력과 일치해야 함</td></tr>
+          </tbody>
+        </table>
+        <pre><code>python3 tools/export_mediapipe_hand_onnx.py --variant lite --dual-halves-layout
+python3 tools/export_mediapipe_palm_onnx.py --variant lite
+./tools/compile_server_snu.sh all</code></pre>
+      </div>
+      <div class="footer"><span>Model build path</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Offline Experiments</div>
+        <h2>카메라 없이 반복 가능한 벤치마크 가능</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>Benchmark</h3>
+            <pre><code>python3 tools/benchmark_dataset.py \
+  --backends cpu-baseline,npu-full \
+  --csv /tmp/air_drum_bench.csv \
+  --json /tmp/air_drum_bench.json</code></pre>
+            <p>평균/P50/P95/min/max, FPS, palm/hand timing, mode count를 출력한다.</p>
+          </div>
+          <div class="panel">
+            <h3>Debug overlay</h3>
+            <pre><code>python3 tools/benchmark_dataset.py \
+  --backends cpu-baseline,npu-full \
+  --debug-dir /tmp/air_drum_debug \
+  --debug-top-k 10</code></pre>
+            <p>오차가 큰 프레임을 green=reference, red=test overlay PNG로 저장한다.</p>
+          </div>
+        </div>
+        <div class="panel">
+          <h3>현재 로컬 smoke 결과</h3>
+          <p>
+            `cpu-baseline --limit 2 --warmup 0`은 평균 100.49 ms로 실행됐다.
+            `npu-full`은 DX-RT service 미실행으로 InferenceEngine 생성이 실패했다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>Dataset replay</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Dataset</div>
+        <h2>캡처, 재생, 확장까지 갖춘 데이터셋 루프</h2>
+      </div>
+      <div class="split">
+        <div class="image-wrap">
+          <img src="../dataset/frame_000.png" alt="Dataset frame example">
+        </div>
+        <div class="content">
+          <div class="panel">
+            <h3>현재 워크스페이스 데이터</h3>
+            <ul>
+              <li>90 frames, 640x480 PNG</li>
+              <li>3개 single-strike capture session</li>
+              <li>Left middle, Left index, Right thumb strike</li>
+              <li>총 37 MB, `.gitignore` 대상</li>
+            </ul>
+          </div>
+          <pre><code>python3 tools/capture_dataset.py \
+  --label left_index_down \
+  --session holdout_01 \
+  --notes "new lighting, 60cm camera"</code></pre>
+        </div>
+      </div>
+      <div class="footer"><span>Capture and replay</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Measured Results</div>
+        <h2>5월 8일 기준 성능 해석</h2>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>구성</th><th>평균</th><th>P95</th><th>해석</th></tr></thead>
+          <tbody>
+            <tr><td><code>cpu-baseline</code>, palm every frame</td><td>84.40 ms</td><td>86.78 ms</td><td>동일 palm+ROI 구조의 CPU 기준</td></tr>
+            <tr><td><code>npu-full</code>, palm every frame</td><td>50.32 ms</td><td>54.52 ms</td><td>hand 단계 NPU 가속 효과 확인</td></tr>
+            <tr><td><code>npu-full --palm-redetect-every 5</code></td><td>15.29 ms</td><td>50.96 ms</td><td>지연은 크게 줄지만 drift 회귀 확인 필요</td></tr>
+            <tr><td><code>npu-full --async-palm</code></td><td>10-20 ms대</td><td>입력 pacing 의존</td><td>실험 경로, live 안정성 검증 필요</td></tr>
+          </tbody>
+        </table>
+        <div class="callout warn">
+          <p>
+            숫자의 핵심은 “NPU가 hand landmark는 빠르게 만든다”와 “전체 지연은 Palm Detection 비중이 크다”이다.
+            그래서 palm skip, async palm, 다른 palm 모델이 중요한 실험 축이다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>Latency analysis</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Calibration</div>
+        <h2>NPU landmark 보정도 실험 가능</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-2">
+          <table>
+            <thead><tr><th>손</th><th>보정 전 평균</th><th>보정 후 평균</th><th>보정 후 손끝</th></tr></thead>
+            <tbody>
+              <tr><td>Right</td><td>0.0270</td><td>0.0102</td><td>0.0112</td></tr>
+              <tr><td>Left</td><td>0.0256</td><td>0.0092</td><td>0.0090</td></tr>
+            </tbody>
+          </table>
+          <div class="panel">
+            <h3>보정 커맨드</h3>
+            <pre><code>python3 tools/calibrate_npu_landmarks.py \
+  --output models/npu_landmark_correction.dataset.json
+
+python3 tools/benchmark_dataset.py \
+  --backends cpu-baseline,npu-full \
+  --landmark-correction models/npu_landmark_correction.dataset.json</code></pre>
+          </div>
+        </div>
+        <div class="callout bad">
+          <p>
+            현재 보정 값은 같은 90프레임 dataset으로 fit/eval한 결과다.
+            demo 기본값으로 쓰기 전에 다른 capture set으로 hold-out 검증해야 한다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>NPU correction</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Palm Bottleneck</div>
+        <h2>Palm `.dxnn`은 속도는 빠르지만 실사용 불가 판정</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-3">
+          <div class="panel">
+            <h3>좋은 점</h3>
+            <p>Palm NPU 추론은 약 12 ms로 CPU TFLite 약 95 ms보다 빠르다.</p>
+          </div>
+          <div class="panel">
+            <h3>문제</h3>
+            <p>INT8 양자화 후 score head가 파괴되어 손 검출 score가 신뢰 불가능해진다.</p>
+          </div>
+          <div class="panel">
+            <h3>현재 결론</h3>
+            <p>Palm은 TFLite CPU float32 고정, Hand landmark만 NPU로 실행한다.</p>
+          </div>
+        </div>
+        <table>
+          <thead><tr><th>시도</th><th>결과</th></tr></thead>
+          <tbody>
+            <tr><td>ema/minmax calibration</td><td>score head 문제 해결 안 됨</td></tr>
+            <tr><td>aggressive partitioning</td><td>score head 문제 해결 안 됨</td></tr>
+            <tr><td>opt_level 0/1</td><td>score head 문제 해결 안 됨</td></tr>
+            <tr><td>명시적 `--palm-dxnn`</td><td>남아 있지만 연구/재현용 경로</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="footer"><span>Known model limitation</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Optimization Levers</div>
+        <h2>지연을 줄이는 실험 축</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-3">
+          <div class="panel">
+            <h3>Palm skip</h3>
+            <p><code>--palm-redetect-every N</code>으로 N프레임 동안 이전 ROI를 추적한다. 빠르지만 drift 위험이 있다.</p>
+          </div>
+          <div class="panel">
+            <h3>Async palm</h3>
+            <p><code>--async-palm</code>으로 palm을 background thread에 보내고 hand tracking을 계속한다.</p>
+          </div>
+          <div class="panel">
+            <h3>Correction</h3>
+            <p>NPU INT8 landmark 편향을 CPU baseline 기준 affine correction으로 줄인다.</p>
+          </div>
+        </div>
+        <pre><code>python3 tools/sweep_palm_redetect.py \
+  --values 0,1,2,3,5,10 \
+  --backends cpu-baseline,npu-full \
+  --csv /tmp/palm_sweep.csv \
+  --json /tmp/palm_sweep.json</code></pre>
+      </div>
+      <div class="footer"><span>Latency vs accuracy experiments</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">QA</div>
+        <h2>회귀 테스트와 품질 체크가 이미 준비됨</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>테스트 커버리지</h3>
+            <ul>
+              <li>strike detector mapping and hit condition</li>
+              <li>palm ROI affine warp/inverse transform</li>
+              <li>benchmark statistics, comparison, overlay manifest</li>
+              <li>capture dataset index handling</li>
+              <li>palm redetect sweep parsing and row compacting</li>
+              <li>NPU calibration schema and synthetic correction</li>
+            </ul>
+          </div>
+          <div class="panel">
+            <h3>실행 결과</h3>
+            <pre><code>python3 -m unittest discover -s tests -v
+# Ran 18 tests ... OK
+
+python3 tools/test_palm_decode.py
+# Results: 15/15 passed, 0 failed</code></pre>
+          </div>
+        </div>
+        <pre><code>RUN_BENCH_SMOKE=0 ./scripts/check_quality.sh
+./scripts/check_quality.sh</code></pre>
+      </div>
+      <div class="footer"><span>Test status</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Generated Assets</div>
+        <h2>데모 설명용 이미지도 생성 가능</h2>
+      </div>
+      <div class="hero">
+        <div class="content">
+          <div class="panel">
+            <h3>Instrument diagrams</h3>
+            <p>
+              `tools/gen_instrument_diagrams.py`가 손가락별 drum/piano 매핑 이미지를 생성한다.
+              README와 라이브 sidebar에서 이 이미지가 사용된다.
+            </p>
+            <pre><code>python3 tools/gen_instrument_diagrams.py
+python3 tools/gen_instrument_diagrams.py --only drum_default</code></pre>
+          </div>
+          <div class="panel">
+            <h3>Custom mapping</h3>
+            <p>
+              `instruments.example.json`, `instruments.piano.example.json`을 바꿔
+              손가락별 sound key나 note를 재매핑할 수 있다.
+            </p>
+          </div>
+        </div>
+        <div class="image-wrap">
+          <img src="../instruments/drum_all_instruments.png" alt="All available drum sounds mapping">
+        </div>
+      </div>
+      <div class="footer"><span>Documentation assets</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Local Workspace</div>
+        <h2>현재 장비에서 확인한 readiness</h2>
+      </div>
+      <div class="content">
+        <table>
+          <thead><tr><th>항목</th><th>상태</th><th>근거</th></tr></thead>
+          <tbody>
+            <tr><td>Tracked source/docs/tests</td><td><span class="status ready">Ready</span></td><td>Git tracked file 60개</td></tr>
+            <tr><td>Local dataset</td><td><span class="status ready">Ready local</span></td><td>90 PNG frames, 37 MB, ignored by Git</td></tr>
+            <tr><td>Local vendor models</td><td><span class="status ready">Ready local</span></td><td>TFLite, ONNX, DXNN 파일 존재, ignored by Git</td></tr>
+            <tr><td>CPU-baseline benchmark</td><td><span class="status ready">Ready</span></td><td>`--limit 2` 실행 성공</td></tr>
+            <tr><td>NPU benchmark</td><td><span class="status conditional">Needs runtime</span></td><td>DX-RT service not running 에러 확인</td></tr>
+            <tr><td>Unit tests</td><td><span class="status ready">Ready</span></td><td>18개 테스트 통과</td></tr>
+          </tbody>
+        </table>
+        <div class="callout warn">
+          <p>
+            새 클론에서는 dataset과 `models/vendor` 대용량 파일이 빠질 수 있다.
+            이 장비의 현재 워크스페이스에서는 존재하므로 실험은 가능하지만, 재현성 문서에는 자산 생성/복사 절차가 필요하다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>Environment note</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Risks</div>
+        <h2>실험 결과를 해석할 때의 리스크</h2>
+      </div>
+      <div class="content">
+        <div class="grid cols-2">
+          <div class="panel">
+            <h3>NPU runtime availability</h3>
+            <p>모델 파일만으로 충분하지 않다. `dxrt-cli`, service, NPU reset, `dx_engine` ABI가 맞아야 한다.</p>
+          </div>
+          <div class="panel">
+            <h3>Calibration overfit</h3>
+            <p>현재 correction은 training dataset에서 좋아진 값이다. hold-out이 없으면 demo 품질을 보장할 수 없다.</p>
+          </div>
+          <div class="panel">
+            <h3>Palm bottleneck</h3>
+            <p>Palm CPU TFLite가 전체 지연의 큰 비중이다. palm skip/async는 정확도와 trade-off가 있다.</p>
+          </div>
+          <div class="panel">
+            <h3>E2E latency gap</h3>
+            <p>Offline benchmark는 vision loop 기준이다. 카메라 입력부터 오디오 출력까지의 E2E 측정은 별도다.</p>
+          </div>
+          <div class="panel">
+            <h3>Ignored assets</h3>
+            <p>dataset과 vendor model은 Git ignore 대상이다. 실험 전달 시 자산 패키징 전략이 필요하다.</p>
+          </div>
+          <div class="panel">
+            <h3>Unwired utilities</h3>
+            <p>거리 기반 dynamic piano helper는 존재하지만 현재 `main.py`의 live path에는 연결되어 있지 않다.</p>
+          </div>
+        </div>
+      </div>
+      <div class="footer"><span>Known limits</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Recommended Experiments</div>
+        <h2>다음 실험 순서</h2>
+      </div>
+      <div class="content">
+        <div class="flow">
+          <div class="step"><span class="num">01</span><h3>Runtime check</h3><p>`dxrt-cli -s`, service 상태, NPU reset 후 `npu-full --limit 2` 재시도.</p></div>
+          <div class="step"><span class="num">02</span><h3>Baseline capture</h3><p>현재 조명/거리로 hold-out dataset 3세트 이상 추가.</p></div>
+          <div class="step"><span class="num">03</span><h3>Correction eval</h3><p>training/hold-out 분리로 correction 전후 오차 비교.</p></div>
+          <div class="step"><span class="num">04</span><h3>Palm sweep</h3><p>`0,1,2,3,5,10` sweep 후 latency/error 곡선 작성.</p></div>
+          <div class="step"><span class="num">05</span><h3>E2E test</h3><p>고속 카메라나 audio waveform 기준으로 타격-소리 지연 측정.</p></div>
+        </div>
+        <div class="callout">
+          <p>
+            우선순위는 “NPU runtime 복구 -> hold-out dataset -> correction 일반화 검증 -> palm skip 기본값 판단”이다.
+            이 순서가 되어야 데모 품질과 성능 수치가 함께 설명 가능해진다.
+          </p>
+        </div>
+      </div>
+      <div class="footer"><span>Experiment roadmap</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Everything This Repo Can Do</div>
+        <h2>기능 목록 요약</h2>
+      </div>
+      <div class="content">
+        <div class="toc">
+          <div>손 추적 기반 air drum 연주</div>
+          <div>손가락별 piano note 연주</div>
+          <div>커스텀 drum/piano JSON 매핑</div>
+          <div>Fullscreen OpenCV UI와 mapping sidebar</div>
+          <div>MediaPipe CPU 빠른 데모</div>
+          <div>TFLite CPU-baseline 비교 경로</div>
+          <div>Hand landmark NPU `.dxnn` 실행</div>
+          <div>Palm+Hand full pipeline 실험</div>
+          <div>Dataset capture와 manifest 기록</div>
+          <div>Dataset replay benchmark</div>
+          <div>Latency CSV/JSON export</div>
+          <div>Landmark error comparison</div>
+          <div>High-error overlay 이미지 저장</div>
+          <div>Palm redetect interval sweep</div>
+          <div>Async palm 실험</div>
+          <div>NPU landmark affine correction</div>
+          <div>MediaPipe model export</div>
+          <div>DX-COM compile server workflow</div>
+          <div>Palm decode/ROI 수학 테스트</div>
+          <div>문서화된 아키텍처와 실험 절차</div>
+        </div>
+      </div>
+      <div class="footer"><span>Capability inventory</span><span class="counter"></span></div>
+    </section>
+
+    <section class="slide">
+      <div>
+        <div class="eyebrow">Final Judgement</div>
+        <h2>실험 레포로는 충분히 준비되어 있다</h2>
+      </div>
+      <div class="content">
+        <div class="callout">
+          <p class="lead">
+            이 레포는 “데모 앱”과 “실험 장치”를 모두 갖고 있다. 바로 보여줄 수 있는 것은 CPU 기반 air drum/piano와
+            dataset replay이고, 핵심 연구 가치는 CPU-baseline 대 NPU-full 비교, palm 병목 최적화,
+            NPU landmark 보정 검증에 있다.
+          </p>
+        </div>
+        <div class="grid cols-3">
+          <div class="panel"><h3>강점</h3><p>반복 가능한 benchmark, 문서화된 모델 파이프라인, 테스트 루프가 있다.</p></div>
+          <div class="panel"><h3>주의</h3><p>NPU runtime과 ignored asset 상태가 실험 재현성의 핵심 관문이다.</p></div>
+          <div class="panel"><h3>다음</h3><p>DX-RT service 복구 후 hold-out dataset으로 correction/async/palm skip을 검증한다.</p></div>
+        </div>
+      </div>
+      <div class="footer"><span>End</span><span class="counter"></span></div>
+    </section>
+  </div>
+
+  <div class="nav">
+    <button type="button" id="prev" aria-label="Previous slide">‹</button>
+    <button type="button" id="next" aria-label="Next slide">›</button>
+  </div>
+  <div class="progress" id="progress"></div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll('.slide'));
+    const counters = Array.from(document.querySelectorAll('.counter'));
+    const progress = document.getElementById('progress');
+    let index = 0;
+
+    function show(nextIndex) {
+      index = Math.max(0, Math.min(slides.length - 1, nextIndex));
+      slides.forEach((slide, i) => slide.classList.toggle('active', i === index));
+      counters.forEach(counter => counter.textContent = `${index + 1} / ${slides.length}`);
+      progress.style.width = `${((index + 1) / slides.length) * 100}%`;
+      location.hash = `slide-${index + 1}`;
+    }
+
+    document.getElementById('prev').addEventListener('click', () => show(index - 1));
+    document.getElementById('next').addEventListener('click', () => show(index + 1));
+    window.addEventListener('keydown', event => {
+      if (event.key === 'ArrowRight' || event.key === 'PageDown' || event.key === ' ') show(index + 1);
+      if (event.key === 'ArrowLeft' || event.key === 'PageUp') show(index - 1);
+      if (event.key === 'Home') show(0);
+      if (event.key === 'End') show(slides.length - 1);
+    });
+
+    const fromHash = Number((location.hash || '').replace('#slide-', ''));
+    show(Number.isFinite(fromHash) && fromHash > 0 ? fromHash - 1 : 0);
+  </script>
+</body>
+</html>

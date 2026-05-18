@@ -194,6 +194,8 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 
 - [ARCHITECTURE.md](docs/ARCHITECTURE.md)
 - [EXPERIMENTS.md](docs/EXPERIMENTS.md) — 벤치마크 결과 포함
+- [MIDTERM_PRESENTATION_2026.html](docs/MIDTERM_PRESENTATION_2026.html) / [PDF](docs/MIDTERM_PRESENTATION_2026.pdf) — 중간발표용 슬라이드
+- [REPO_CAPABILITIES_SLIDES.html](docs/REPO_CAPABILITIES_SLIDES.html) — 레포 기능·실험 가능성 HTML 슬라이드
 - [Palm+Hand NPU 파이프라인 계획](docs/PLAN_NPU_FULL_HAND_PIPELINE.md) — Phase 0~6 로드맵 + 체크박스  
 - [다음 세션 실험 가이드](docs/NEXT_SESSION_NPU_PALM.md) — 명령어·체크리스트·완료 기준
 

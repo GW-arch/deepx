@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NPU 기반 AI Air Drum / Piano Pad - 중간발표</title>
+  <style>
+    :root {
+      --ink: #121416;
+      --muted: #5b626b;
+      --paper: #fbfaf7;
+      --line: #d7d2c8;
+      --shade: #efede6;
+      --deep: #103f4a;
+      --teal: #0d6b66;
+      --blue: #255d91;
+      --green: #2f6f4e;
+      --orange: #a65f21;
+      --red: #9c3434;
+      --violet: #64518f;
+      --cpu: #255d91;
+      --npu: #0d6b66;
+      --logic: #a65f21;
+      --audio: #64518f;
+    }
+
+    * { box-sizing: border-box; }
+    html, body { margin: 0; background: #ece8dd; color: var(--ink); }
+    body {
+      font-family: "Noto Sans KR", "Apple SD Gothic Neo", "Malgun Gothic", Inter, system-ui, sans-serif;
+      letter-spacing: 0;
+    }
+
+    .deck { width: 100vw; min-height: 100vh; }
+    .slide {
+      width: 100vw;
+      height: 100vh;
+      display: none;
+      grid-template-rows: auto 1fr auto;
+      gap: 20px;
+      padding: 44px 62px 38px;
+      background:
+        linear-gradient(90deg, rgba(16,63,74,0.055) 0, rgba(16,63,74,0.055) 34%, transparent 34%),
+        var(--paper);
+      overflow: hidden;
+      page-break-after: always;
+    }
+    .slide.active { display: grid; }
+
+    h1, h2, h3, p { margin: 0; }
+    h1 { font-size: 55px; line-height: 1.08; letter-spacing: 0; font-weight: 850; }
+    h2 { font-size: 40px; line-height: 1.14; letter-spacing: 0; font-weight: 820; }
+    h3 { font-size: 21px; line-height: 1.28; letter-spacing: 0; font-weight: 780; }
+    p, li, td, th { font-size: 16px; line-height: 1.5; }
+    ul { margin: 9px 0 0 19px; padding: 0; }
+    li { margin: 5px 0; }
+    code {
+      font-family: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+      background: #e8e2d8;
+      border-radius: 4px;
+      padding: 0.08em 0.28em;
+      font-size: 0.9em;
+    }
+
+    .eyebrow {
+      color: var(--teal);
+      font-size: 14px;
+      font-weight: 900;
+      letter-spacing: 0.11em;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+    .subtitle {
+      color: #2f3438;
+      font-size: 22px;
+      line-height: 1.42;
+      max-width: 1050px;
+      margin-top: 16px;
+    }
+    .muted { color: var(--muted); }
+    .small { color: var(--muted); font-size: 13px; line-height: 1.42; }
+
+    .content {
+      min-height: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      gap: 16px;
+    }
+    .footer {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-top: 1px solid var(--line);
+      padding-top: 9px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .grid { display: grid; gap: 14px; }
+    .two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .four { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .five { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .wide-left { grid-template-columns: 1.12fr 0.88fr; }
+    .wide-right { grid-template-columns: 0.88fr 1.12fr; }
+    .top-align { align-items: start; }
+
+    .card {
+      background: rgba(255,255,255,0.78);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px 18px;
+      box-shadow: 0 7px 18px rgba(20, 18, 14, 0.08);
+    }
+    .card h3 { margin-bottom: 7px; color: #172126; }
+    .card p, .card li { font-size: 15px; }
+    .accent { border-top: 5px solid var(--teal); }
+    .accent-blue { border-top: 5px solid var(--blue); }
+    .accent-orange { border-top: 5px solid var(--orange); }
+    .accent-red { border-top: 5px solid var(--red); }
+    .accent-green { border-top: 5px solid var(--green); }
+    .accent-violet { border-top: 5px solid var(--violet); }
+
+    .metric {
+      min-height: 104px;
+      background: white;
+      border: 1px solid var(--line);
+      border-left: 6px solid var(--teal);
+      border-radius: 8px;
+      padding: 14px 16px;
+    }
+    .metric strong {
+      display: block;
+      font-size: 31px;
+      line-height: 1.05;
+      margin-bottom: 5px;
+      color: var(--deep);
+    }
+    .metric span { color: var(--muted); font-size: 13px; line-height: 1.34; }
+
+    .table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: white;
+      box-shadow: 0 7px 18px rgba(20, 18, 14, 0.08);
+    }
+    .table th, .table td {
+      border-bottom: 1px solid var(--line);
+      padding: 10px 12px;
+      text-align: left;
+      vertical-align: top;
+    }
+    .table tr:last-child td { border-bottom: 0; }
+    .table th {
+      background: var(--shade);
+      font-size: 12px;
+      color: #222;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+    }
+    .table td { font-size: 15px; }
+
+    .image-box {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px;
+      box-shadow: 0 12px 26px rgba(20, 18, 14, 0.12);
+    }
+    .image-box img {
+      display: block;
+      width: 100%;
+      max-height: 420px;
+      object-fit: contain;
+      border-radius: 5px;
+    }
+
+    .note {
+      background: #fff;
+      border-left: 6px solid var(--teal);
+      border-radius: 8px;
+      padding: 15px 18px;
+      box-shadow: 0 7px 18px rgba(20, 18, 14, 0.08);
+    }
+    .note.warning { border-left-color: var(--orange); }
+    .note.critical { border-left-color: var(--red); }
+    .note p { font-size: 16px; }
+
+    .tag {
+      display: inline-block;
+      border: 1px solid currentColor;
+      border-radius: 999px;
+      padding: 3px 9px;
+      font-size: 12px;
+      font-weight: 900;
+      background: white;
+      white-space: nowrap;
+    }
+    .ok { color: var(--green); }
+    .warn { color: var(--orange); }
+    .bad { color: var(--red); }
+    .info { color: var(--blue); }
+
+    pre {
+      margin: 0;
+      background: #202427;
+      color: #f5f0e8;
+      border-radius: 8px;
+      padding: 14px 16px;
+      font-size: 13px;
+      line-height: 1.42;
+      overflow: auto;
+    }
+    pre code { background: transparent; padding: 0; color: inherit; }
+
+    .block {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px 15px;
+      box-shadow: 0 6px 15px rgba(20, 18, 14, 0.07);
+      min-height: 92px;
+    }
+    .block h3 { font-size: 18px; margin-bottom: 5px; }
+    .block p { font-size: 14px; color: var(--muted); }
+    .cpu { border-top: 5px solid var(--cpu); }
+    .npu { border-top: 5px solid var(--npu); }
+    .logic { border-top: 5px solid var(--logic); }
+    .audio { border-top: 5px solid var(--audio); }
+    .data { border-top: 5px solid var(--green); }
+
+    .flowline {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      gap: 12px;
+      align-items: stretch;
+    }
+    .step {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      min-height: 126px;
+      position: relative;
+    }
+    .step::before {
+      content: attr(data-step);
+      display: inline-block;
+      color: var(--teal);
+      font-size: 13px;
+      font-weight: 900;
+      margin-bottom: 7px;
+    }
+    .step h3 { font-size: 18px; margin-bottom: 5px; }
+    .step p { font-size: 13px; color: var(--muted); }
+
+    .lane {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      gap: 10px;
+      align-items: stretch;
+      margin-bottom: 10px;
+    }
+    .lane-label {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+      color: #fff;
+      font-weight: 900;
+      background: var(--deep);
+      padding: 12px;
+    }
+    .lane-row {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .lane-row .block { min-height: 86px; }
+
+    .layers {
+      display: grid;
+      gap: 10px;
+    }
+    .layer {
+      display: grid;
+      grid-template-columns: 180px 1fr;
+      gap: 12px;
+      align-items: stretch;
+    }
+    .layer-name {
+      border-radius: 8px;
+      padding: 13px;
+      color: white;
+      font-weight: 900;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+    }
+    .layer-body {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+    }
+
+    .matrix {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .partition {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .partition .card { min-height: 220px; }
+
+    .timeline {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 12px;
+    }
+    .milestone {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 178px;
+    }
+    .milestone .date {
+      color: var(--teal);
+      font-weight: 900;
+      margin-bottom: 7px;
+      font-size: 13px;
+    }
+    .milestone h3 { font-size: 19px; margin-bottom: 7px; }
+    .milestone li { font-size: 14px; }
+
+    .axis {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+    .axis-box {
+      background: white;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 16px;
+      min-height: 250px;
+      position: relative;
+    }
+    .axis-box h3 { margin-bottom: 10px; }
+    .bar {
+      height: 28px;
+      border-radius: 5px;
+      margin: 8px 0;
+      color: white;
+      display: flex;
+      align-items: center;
+      padding-left: 10px;
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .bar.cpu { background: var(--cpu); border: 0; }
+    .bar.npu { background: var(--npu); border: 0; }
+    .bar.palm { background: var(--orange); border: 0; }
+    .bar.err { background: var(--red); border: 0; }
+
+    .nav {
+      position: fixed;
+      right: 18px;
+      bottom: 18px;
+      display: flex;
+      gap: 8px;
+      z-index: 10;
+    }
+    .nav button {
+      width: 42px;
+      height: 34px;
+      border: 1px solid #9b958b;
+      border-radius: 8px;
+      background: #fff;
+      font-size: 18px;
+      font-weight: 900;
+      cursor: pointer;
+    }
+    .progress {
+      position: fixed;
+      left: 0;
+      bottom: 0;
+      height: 5px;
+      width: 0;
+      background: linear-gradient(90deg, var(--teal), var(--blue), var(--orange));
+      z-index: 11;
+    }
+
+    @media print {
+      @page { size: 16in 9in; margin: 0; }
+      html, body { width: 16in; height: 9in; background: white; }
+      .deck { width: 16in; min-height: 9in; }
+      .slide {
+        display: grid !important;
+        width: 16in;
+        height: 9in;
+        break-after: page;
+        page-break-after: always;
+      }
+      .nav, .progress { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="deck">
+    <section class="slide active">
+      <header>
+        <div class="eyebrow">중간발표</div>
+        <h1>NPU 기반 AI Air Drum / Piano Pad</h1>
+        <p class="subtitle">
+          카메라 기반 손가락 추적과 엣지 NPU를 활용한 저지연 가상 악기 인터페이스 구현
+        </p>
+      </header>
+      <div class="content grid wide-left top-align">
+        <div class="card accent">
+          <h3>발표 관점</h3>
+          <ul>
+            <li>코드 사용법보다 시스템 아키텍처와 설계 판단을 중심으로 설명</li>
+            <li>CPU와 NPU에 어떤 연산을 배치했는지, 왜 그렇게 나눴는지 제시</li>
+            <li>현재 구현된 실험 루프와 남은 위험을 중간 산출물 관점에서 정리</li>
+          </ul>
+        </div>
+        <div class="image-box">
+          <img src="../instruments/piano_default.png" alt="Piano mapping diagram">
+        </div>
+      </div>
+      <footer class="footer"><span>deepx / air_drum_pad</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Presentation Outline</div>
+        <h2>발표에서 답해야 하는 질문</h2>
+      </header>
+      <div class="content grid two">
+        <div class="card accent-blue">
+          <h3>1. 무엇을 만들었는가?</h3>
+          <p>손가락 landmark를 이용해 실제 타격 동작을 인식하고, 드럼/피아노 사운드를 재생하는 가상 악기 인터페이스.</p>
+        </div>
+        <div class="card accent-green">
+          <h3>2. NPU는 어디에 쓰는가?</h3>
+          <p>현재 안정 경로에서는 hand landmark CNN을 NPU `.dxnn`으로 실행하고, palm detection은 CPU TFLite로 유지한다.</p>
+        </div>
+        <div class="card accent-orange">
+          <h3>3. 왜 그렇게 분할했는가?</h3>
+          <p>Palm detector는 INT8 양자화 후 score head가 깨졌다. 반면 hand landmark는 NPU 가속 효과가 확인됐다.</p>
+        </div>
+        <div class="card accent-violet">
+          <h3>4. 어느 정도 검증했는가?</h3>
+          <p>라이브 데모 경로, dataset replay benchmark, landmark error 비교, 단위 테스트, 보정 실험을 갖췄다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Core review questions</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">System Requirements</div>
+        <h2>시스템 요구사항과 제약</h2>
+      </header>
+      <div class="content">
+        <table class="table">
+          <thead><tr><th>구분</th><th>요구사항</th><th>아키텍처 영향</th></tr></thead>
+          <tbody>
+            <tr><td>입력</td><td>USB 카메라 기반, 별도 센서 없음</td><td>영상 전처리와 손 검출이 전체 pipeline의 시작점</td></tr>
+            <tr><td>상호작용</td><td>고정 패드 영역 없이 손가락 움직임 자체를 연주로 해석</td><td>단순 위치 판정이 아니라 landmark 시간 변화 추적 필요</td></tr>
+            <tr><td>실시간성</td><td>연주 느낌을 위해 낮은 지연과 안정적인 frame loop 필요</td><td>Palm/landmark inference의 CPU/NPU 분할이 중요</td></tr>
+            <tr><td>엣지 실행</td><td>보드에서 오프라인 실행, 클라우드 의존 없음</td><td>DX-RT, TFLite, OpenCV, pygame 중심으로 구성</td></tr>
+            <tr><td>검증</td><td>실험을 반복 가능하게 측정해야 함</td><td>라이브 카메라 외에 dataset replay benchmark 필요</td></tr>
+          </tbody>
+        </table>
+        <div class="note">
+          <p>중간발표의 핵심은 “새 알고리즘 제안”이 아니라, 제한된 엣지 환경에서 동작하는 전체 시스템을 설계하고 측정 가능한 구조로 만든 점이다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Requirements drive architecture</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">System Context</div>
+        <h2>전체 시스템 컨텍스트</h2>
+      </header>
+      <div class="content">
+        <div class="flowline">
+          <div class="step" data-step="Input"><h3>USB Camera</h3><p>RGB/BGR frame stream, 640x480 기본 입력</p></div>
+          <div class="step" data-step="Vision"><h3>Hand Tracker</h3><p>Palm detection, ROI crop, 21 landmark 추론</p></div>
+          <div class="step" data-step="Gesture"><h3>Strike Detector</h3><p>손끝 속도와 관절 각속도 기반 이벤트 생성</p></div>
+          <div class="step" data-step="Mapping"><h3>Instrument Map</h3><p>손/손가락 slot을 drum 또는 piano key에 연결</p></div>
+          <div class="step" data-step="Output"><h3>Audio + UI</h3><p>합성 sample 재생, fullscreen feedback 표시</p></div>
+        </div>
+        <div class="grid three">
+          <div class="card"><h3>실시간 경로</h3><p>카메라 frame마다 tracker와 strike detector가 연결되어 바로 사운드를 trigger한다.</p></div>
+          <div class="card"><h3>실험 경로</h3><p>동일 tracker를 dataset replay에 연결해 live camera 없이 지연과 landmark 오차를 측정한다.</p></div>
+          <div class="card"><h3>모델 경로</h3><p>MediaPipe TFLite 모델을 ONNX와 DXNN으로 변환해 NPU 실험에 사용한다.</p></div>
+        </div>
+      </div>
+      <footer class="footer"><span>System context diagram</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Layered Architecture</div>
+        <h2>소프트웨어 계층 구조</h2>
+      </header>
+      <div class="content layers">
+        <div class="layer">
+          <div class="layer-name" style="background:var(--deep)">Application</div>
+          <div class="layer-body">
+            <div class="block"><h3>Drum Mode</h3><p>percussion slot 재생</p></div>
+            <div class="block"><h3>Piano Mode</h3><p>note-name 기반 합성음</p></div>
+            <div class="block"><h3>Fullscreen UI</h3><p>카메라 + 매핑 + hit feedback</p></div>
+          </div>
+        </div>
+        <div class="layer">
+          <div class="layer-name" style="background:var(--logic)">Interaction Logic</div>
+          <div class="layer-body">
+            <div class="block"><h3>Strike Rule</h3><p>tip velocity + joint angular velocity</p></div>
+            <div class="block"><h3>Cooldown</h3><p>중복 trigger 억제</p></div>
+            <div class="block"><h3>Slot Mapping</h3><p>hand x finger -> sound key</p></div>
+          </div>
+        </div>
+        <div class="layer">
+          <div class="layer-name" style="background:var(--teal)">Vision Backend</div>
+          <div class="layer-body">
+            <div class="block"><h3>MediaPipe CPU</h3><p>빠른 기본 데모</p></div>
+            <div class="block"><h3>TFLite CPU</h3><p>baseline 비교</p></div>
+            <div class="block"><h3>DX-RT NPU</h3><p>hand landmark acceleration</p></div>
+          </div>
+        </div>
+        <div class="layer">
+          <div class="layer-name" style="background:var(--blue)">Experiment Tools</div>
+          <div class="layer-body">
+            <div class="block"><h3>Capture</h3><p>dataset + manifest</p></div>
+            <div class="block"><h3>Benchmark</h3><p>latency / error / overlay</p></div>
+            <div class="block"><h3>Calibration</h3><p>NPU landmark correction</p></div>
+          </div>
+        </div>
+      </div>
+      <footer class="footer"><span>Layered software architecture</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Runtime Partitioning</div>
+        <h2>CPU와 NPU의 역할 분담</h2>
+      </header>
+      <div class="content">
+        <div class="lane">
+          <div class="lane-label" style="background:var(--cpu)">CPU</div>
+          <div class="lane-row">
+            <div class="block cpu"><h3>Camera I/O</h3><p>OpenCV frame capture</p></div>
+            <div class="block cpu"><h3>Palm Detection</h3><p>TFLite float32, 안정 경로</p></div>
+            <div class="block cpu"><h3>ROI / Decode</h3><p>anchor decode, NMS, affine warp</p></div>
+            <div class="block cpu"><h3>Gesture / Audio</h3><p>strike logic, pygame mixer</p></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-label" style="background:var(--npu)">NPU</div>
+          <div class="lane-row">
+            <div class="block npu"><h3>Hand Landmark CNN</h3><p>224x224 hand patch</p></div>
+            <div class="block npu"><h3>DXNN Runtime</h3><p>DX-RT InferenceEngine</p></div>
+            <div class="block npu"><h3>INT8 Inference</h3><p>DeepX NPU execution</p></div>
+            <div class="block npu"><h3>Output Tensor</h3><p>21 landmark coordinates</p></div>
+          </div>
+        </div>
+        <div class="note warning">
+          <p>Palm detection도 NPU로 시도했지만 INT8 양자화 품질 문제가 있어, 중간발표 기준 안정 경로는 <strong>CPU Palm + NPU Hand</strong>이다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Heterogeneous compute partition</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Vision Pipeline</div>
+        <h2><code>npu-full</code>의 frame 처리 흐름</h2>
+      </header>
+      <div class="content">
+        <div class="flowline">
+          <div class="step" data-step="01"><h3>RGB Frame</h3><p>OpenCV frame을 tracker 입력으로 변환</p></div>
+          <div class="step" data-step="02"><h3>Palm Tensor</h3><p>192x192 letterbox, [0,1] float32</p></div>
+          <div class="step" data-step="03"><h3>Palm Decode</h3><p>2016 SSD anchors, score, weighted NMS</p></div>
+          <div class="step" data-step="04"><h3>Hand ROI</h3><p>회전 사각형 crop, 224x224 patch 생성</p></div>
+          <div class="step" data-step="05"><h3>Landmark</h3><p>NPU inference 후 원본 좌표로 역변환</p></div>
+        </div>
+        <div class="grid two">
+          <div class="card accent-blue">
+            <h3>CPU-baseline과의 관계</h3>
+            <p>같은 palm/ROI 경로를 사용하고 hand landmark만 CPU TFLite로 바꿔, NPU 효과를 분리해서 비교한다.</p>
+          </div>
+          <div class="card accent-green">
+            <h3>왜 ROI가 중요한가?</h3>
+            <p>hand landmark 모델은 손 중심 crop을 전제로 하므로, palm keypoint에서 안정적인 회전 ROI를 만드는 것이 정확도에 직접 영향을 준다.</p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer"><span>Full hand tracking pipeline</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Backend Architecture Variants</div>
+        <h2>4개 backend가 의미하는 아키텍처 변형</h2>
+      </header>
+      <div class="content">
+        <table class="table">
+          <thead><tr><th>Backend</th><th>구성</th><th>장점</th><th>한계</th><th>발표에서의 역할</th></tr></thead>
+          <tbody>
+            <tr><td><code>cpu</code></td><td>MediaPipe graph 전체 CPU</td><td>설치 후 가장 쉽게 데모</td><td>NPU 실험 분리 불가</td><td>기본 시연 경로</td></tr>
+            <tr><td><code>cpu-baseline</code></td><td>Palm TFLite + Hand TFLite</td><td>`npu-full`과 동일 구조</td><td>느림</td><td>NPU 비교 기준선</td></tr>
+            <tr><td><code>npu</code></td><td>화면 좌/우 반분할 + Hand NPU</td><td>palm 병목 없음</td><td>정확한 손 검출 없음</td><td>NPU 속도 확인용</td></tr>
+            <tr><td><code>npu-full</code></td><td>Palm CPU + Hand NPU</td><td>정식 2-hand pipeline</td><td>palm CPU 병목</td><td>목표 아키텍처</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <footer class="footer"><span>Backend variants</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Why Palm Stays on CPU</div>
+        <h2>Palm detection NPU화 실패 원인</h2>
+      </header>
+      <div class="content partition">
+        <div class="card accent-green">
+          <h3>속도 관점</h3>
+          <ul>
+            <li>Palm `.dxnn` 추론은 약 12 ms로 CPU TFLite보다 빠름</li>
+            <li>속도만 보면 NPU로 옮기는 것이 맞아 보임</li>
+            <li>하지만 detector는 score가 깨지면 box가 있어도 사용할 수 없음</li>
+          </ul>
+          <div class="bar npu" style="width: 42%">Palm NPU ~12 ms</div>
+          <div class="bar palm" style="width: 92%">Palm CPU ~40-95 ms</div>
+        </div>
+        <div class="card accent-red">
+          <h3>정확도 관점</h3>
+          <ul>
+            <li>INT8 양자화 후 score head가 손 검출 점수를 잃음</li>
+            <li>ONNX와 NPU score correlation: -0.11</li>
+            <li>ema/minmax, opt level 변경으로 해결되지 않음</li>
+          </ul>
+          <div class="bar err" style="width: 92%">score head: broken</div>
+          <div class="bar cpu" style="width: 70%">box head: partially usable</div>
+        </div>
+        <div class="note warning" style="grid-column: 1 / -1;">
+          <p>결론: 중간발표 기준 목표 아키텍처는 Palm까지 전부 NPU가 아니라, <strong>Palm은 CPU 안정 경로, Hand landmark는 NPU 가속</strong>이다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Palm quantization issue</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Gesture Architecture</div>
+        <h2>타격 판정은 위치가 아니라 시간 변화 기반</h2>
+      </header>
+      <div class="content grid wide-right">
+        <div class="image-box">
+          <img src="../instruments/drum_default.png" alt="Drum mapping diagram">
+        </div>
+        <div class="grid">
+          <div class="card accent-orange">
+            <h3>입력 feature</h3>
+            <ul>
+              <li>각 손의 21개 landmark</li>
+              <li>5개 fingertip 좌표: thumb, index, middle, ring, pinky</li>
+              <li>각 손가락의 MCP/PIP/TIP 계열 관절 각도</li>
+            </ul>
+          </div>
+          <div class="card accent-green">
+            <h3>타격 조건</h3>
+            <ul>
+              <li>tip y velocity가 아래 방향으로 임계값 이상</li>
+              <li>joint angular velocity가 임계값 이상</li>
+              <li>cooldown과 최소 변위로 jitter와 중복 hit 억제</li>
+            </ul>
+          </div>
+          <div class="card">
+            <h3>아키텍처상 장점</h3>
+            <p>고정 zone 좌표를 튜닝하는 문제가 아니라, 손가락별 동작 event를 악기 slot으로 변환하는 구조가 된다.</p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer"><span>Kinematic strike detection</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Application Architecture</div>
+        <h2>악기 매핑 계층</h2>
+      </header>
+      <div class="content grid two">
+        <div class="card accent-blue">
+          <h3>공통 추상화: 10 slot</h3>
+          <p>두 손 x 다섯 손가락을 10개의 logical slot으로 보고, 각 slot이 sound key를 가진다.</p>
+          <table class="table" style="margin-top:10px;">
+            <tbody>
+              <tr><td>손 0</td><td>엄지, 검지, 중지, 약지, 소지</td></tr>
+              <tr><td>손 1</td><td>엄지, 검지, 중지, 약지, 소지</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="card accent-green">
+          <h3>모드별 구현</h3>
+          <ul>
+            <li>Drum: kick, snare, hat, tom, crash 등 합성 percussion</li>
+            <li>Piano: C4-E5 등 note-name 기반 합성 tone</li>
+            <li>JSON mapping으로 slot 재배치 가능</li>
+            <li>UI sidebar에 현재 mapping을 그림으로 표시</li>
+          </ul>
+        </div>
+        <div class="image-box">
+          <img src="../instruments/piano_default.png" alt="Piano mapping">
+        </div>
+        <div class="image-box">
+          <img src="../instruments/drum_all_instruments.png" alt="All drum instruments">
+        </div>
+      </div>
+      <footer class="footer"><span>Instrument mapping architecture</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Experiment Architecture</div>
+        <h2>라이브 데모와 오프라인 실험을 분리</h2>
+      </header>
+      <div class="content">
+        <div class="lane">
+          <div class="lane-label" style="background:var(--logic)">Live Path</div>
+          <div class="lane-row">
+            <div class="block"><h3>Camera</h3><p>실제 frame 입력</p></div>
+            <div class="block"><h3>Tracker</h3><p>backend 선택</p></div>
+            <div class="block"><h3>Strike</h3><p>event 생성</p></div>
+            <div class="block"><h3>Audio/UI</h3><p>시연 출력</p></div>
+          </div>
+        </div>
+        <div class="lane">
+          <div class="lane-label" style="background:var(--blue)">Replay Path</div>
+          <div class="lane-row">
+            <div class="block"><h3>Dataset</h3><p>90 frame PNG</p></div>
+            <div class="block"><h3>Tracker</h3><p>같은 backend 사용</p></div>
+            <div class="block"><h3>Metrics</h3><p>latency / error</p></div>
+            <div class="block"><h3>Artifacts</h3><p>CSV, JSON, overlay</p></div>
+          </div>
+        </div>
+        <div class="note">
+          <p>이 분리 덕분에 카메라 환경이 매번 달라도, 같은 frame 입력으로 CPU와 NPU backend의 차이를 반복 측정할 수 있다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Live vs offline evaluation</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Dataset and Metrics</div>
+        <h2>측정 데이터와 지표</h2>
+      </header>
+      <div class="content grid wide-left">
+        <div>
+          <table class="table">
+            <thead><tr><th>항목</th><th>현재 상태</th><th>의미</th></tr></thead>
+            <tbody>
+              <tr><td>Frame data</td><td>90 frames, 640x480 PNG</td><td>3개 single-strike session</td></tr>
+              <tr><td>Reference</td><td><code>cpu-baseline</code></td><td>같은 palm/ROI 구조의 CPU TFLite 기준</td></tr>
+              <tr><td>Latency</td><td>mean, p50, p95, min, max</td><td>프레임 처리 시간 비교</td></tr>
+              <tr><td>Profile</td><td>palm_ms, hand_ms, mode</td><td>병목 위치 분석</td></tr>
+              <tr><td>Landmark error</td><td>mean / fingertips / max</td><td>NPU 좌표 품질 확인</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="image-box">
+          <img src="../dataset/frame_000.png" alt="Dataset frame example">
+        </div>
+      </div>
+      <footer class="footer"><span>Benchmark data model</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Benchmark Results</div>
+        <h2>현재 확보한 성능 결과</h2>
+      </header>
+      <div class="content">
+        <table class="table">
+          <thead><tr><th>구성</th><th>평균</th><th>P95</th><th>profile</th><th>해석</th></tr></thead>
+          <tbody>
+            <tr><td><code>cpu-baseline</code>, palm every frame</td><td>84.40 ms</td><td>86.78 ms</td><td>palm 39.26 + hand 44.80</td><td>전체 CPU 기준</td></tr>
+            <tr><td><code>npu-full</code>, palm every frame</td><td>50.32 ms</td><td>54.52 ms</td><td>palm 40.93 + hand 9.13</td><td>hand NPU 가속 효과</td></tr>
+            <tr><td><code>npu-full</code>, redetect every 5</td><td>15.29 ms</td><td>50.96 ms</td><td>palm 3/20 frames</td><td>지연 개선, drift 검증 필요</td></tr>
+          </tbody>
+        </table>
+        <div class="axis">
+          <div class="axis-box">
+            <h3>병목 해석</h3>
+            <div class="bar palm" style="width: 80%">Palm CPU: 큰 고정 비용</div>
+            <div class="bar npu" style="width: 34%">Hand NPU: 줄어든 비용</div>
+            <p class="small">NPU를 적용해도 Palm이 CPU에 남아 전체 latency를 지배한다.</p>
+          </div>
+          <div class="axis-box">
+            <h3>설계 판단</h3>
+            <div class="bar cpu" style="width: 90%">정확도 우선: palm every frame</div>
+            <div class="bar npu" style="width: 55%">속도 실험: tracking / async</div>
+            <p class="small">기본값은 정확도 우선, 최적화는 dataset benchmark로 검증한다.</p>
+          </div>
+        </div>
+      </div>
+      <footer class="footer"><span>Latency and bottleneck analysis</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">NPU Correction</div>
+        <h2>Landmark 보정 workflow</h2>
+      </header>
+      <div class="content">
+        <div class="flowline">
+          <div class="step" data-step="01"><h3>Replay</h3><p>동일 dataset frame을 CPU/NPU backend에 입력</p></div>
+          <div class="step" data-step="02"><h3>Match</h3><p>Left/Right hand label 기준 landmark 비교</p></div>
+          <div class="step" data-step="03"><h3>Fit</h3><p>landmark별 affine xy correction 학습</p></div>
+          <div class="step" data-step="04"><h3>Apply</h3><p>runtime 또는 benchmark에서 NPU 좌표 보정</p></div>
+          <div class="step" data-step="05"><h3>Validate</h3><p>hold-out dataset으로 일반화 확인 필요</p></div>
+        </div>
+        <table class="table">
+          <thead><tr><th>손</th><th>보정 전 mean</th><th>보정 후 mean</th><th>보정 전 fingertip</th><th>보정 후 fingertip</th></tr></thead>
+          <tbody>
+            <tr><td>Right</td><td>0.0270</td><td>0.0102</td><td>0.0336</td><td>0.0112</td></tr>
+            <tr><td>Left</td><td>0.0256</td><td>0.0092</td><td>0.0353</td><td>0.0090</td></tr>
+          </tbody>
+        </table>
+        <div class="note warning"><p>현재 값은 같은 dataset에서 fit/eval한 결과이므로, 최종 성능 주장에는 hold-out 검증이 필요하다.</p></div>
+      </div>
+      <footer class="footer"><span>Calibration and correction architecture</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Latency Optimization</div>
+        <h2>Palm 병목을 줄이는 실험 구조</h2>
+      </header>
+      <div class="content matrix">
+        <div class="card accent-orange">
+          <h3>Palm Redetect Interval</h3>
+          <p>매 프레임 palm detection을 하지 않고, 일정 프레임 동안 이전 landmark에서 ROI를 재추정한다.</p>
+          <ul>
+            <li>장점: 평균 latency 감소</li>
+            <li>위험: NPU landmark 편향이 누적되어 ROI drift 발생 가능</li>
+            <li>검증: `0,1,2,3,5,10` sweep으로 latency/error curve 작성</li>
+          </ul>
+        </div>
+        <div class="card accent-blue">
+          <h3>Async Palm</h3>
+          <p>Palm detection은 background thread에서 돌리고, foreground는 이전 ROI로 hand landmark를 계속 추적한다.</p>
+          <ul>
+            <li>장점: frame loop의 체감 latency를 줄일 수 있음</li>
+            <li>위험: 빠른 손 움직임에서 stale ROI 사용</li>
+            <li>검증: camera pacing과 실제 live input 모두 비교 필요</li>
+          </ul>
+        </div>
+        <div class="note" style="grid-column:1 / -1;">
+          <p>두 방법 모두 “기본 아키텍처”가 아니라 최적화 실험이다. 교수/리뷰어에게는 기본값이 정확도 우선임을 먼저 밝히는 것이 안전하다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Experimental optimization paths</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Model Build Pipeline</div>
+        <h2>모델 자산 생성 흐름</h2>
+      </header>
+      <div class="content">
+        <div class="flowline">
+          <div class="step" data-step="01"><h3>MediaPipe TFLite</h3><p>hand_landmark_lite, palm_detection_lite</p></div>
+          <div class="step" data-step="02"><h3>ONNX Export</h3><p>tflite2onnx 또는 flatc 기반 변환</p></div>
+          <div class="step" data-step="03"><h3>DX-COM Config</h3><p>input layout, quantization, output mapping</p></div>
+          <div class="step" data-step="04"><h3>Compile Server</h3><p>x86_64/SNU server에서 `.dxnn` 생성</p></div>
+          <div class="step" data-step="05"><h3>Board Runtime</h3><p>DX-RT `dx_engine`으로 NPU 실행</p></div>
+        </div>
+        <div class="grid two">
+          <div class="card"><h3>보드 제약</h3><p>aarch64 보드에서는 DX-COM 컴파일이 직접 어렵고, 컴파일된 `.dxnn`을 복사해 실행하는 구조다.</p></div>
+          <div class="card"><h3>레이아웃 JSON</h3><p>DXNN 출력 텐서 순서와 좌표계를 해석하기 위해 `models/dxnn_layout.*.json`이 필요하다.</p></div>
+        </div>
+      </div>
+      <footer class="footer"><span>Model conversion and deployment</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Implementation Modules</div>
+        <h2>코드 모듈 의존 구조</h2>
+      </header>
+      <div class="content">
+        <div class="layers">
+          <div class="layer">
+            <div class="layer-name" style="background:var(--deep)">main.py</div>
+            <div class="layer-body">
+              <div class="block"><h3>Camera Loop</h3><p>frame read / display</p></div>
+              <div class="block"><h3>Mode Control</h3><p>drum or piano</p></div>
+              <div class="block"><h3>Runtime Args</h3><p>backend / thresholds</p></div>
+            </div>
+          </div>
+          <div class="layer">
+            <div class="layer-name" style="background:var(--teal)">hand_tracker.py</div>
+            <div class="layer-body">
+              <div class="block"><h3>MediapipeHandTracker</h3><p>CPU demo</p></div>
+              <div class="block"><h3>FullNpuHandsTracker</h3><p>palm + ROI + hand</p></div>
+              <div class="block"><h3>DxnnHandTracker</h3><p>NPU inference wrapper</p></div>
+            </div>
+          </div>
+          <div class="layer">
+            <div class="layer-name" style="background:var(--logic)">strike_detector.py</div>
+            <div class="layer-body">
+              <div class="block"><h3>Velocity</h3><p>tip y derivative</p></div>
+              <div class="block"><h3>Angle</h3><p>joint angular velocity</p></div>
+              <div class="block"><h3>Mapping</h3><p>slot -> sound key</p></div>
+            </div>
+          </div>
+          <div class="layer">
+            <div class="layer-name" style="background:var(--blue)">tools/</div>
+            <div class="layer-body">
+              <div class="block"><h3>benchmark</h3><p>offline measurement</p></div>
+              <div class="block"><h3>calibrate</h3><p>landmark correction</p></div>
+              <div class="block"><h3>export/compile</h3><p>model pipeline</p></div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <footer class="footer"><span>Module architecture</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Development Progress</div>
+        <h2>레포 생성 이후 구현 흐름</h2>
+      </header>
+      <div class="content">
+        <div class="timeline">
+          <div class="milestone">
+            <div class="date">2026-04-17</div>
+            <h3>Prototype</h3>
+            <ul><li>손 추적 기반 드럼</li><li>다중 손/손가락</li><li>고정 zone 제거</li><li>피아노 모드</li></ul>
+          </div>
+          <div class="milestone">
+            <div class="date">2026-04-17</div>
+            <h3>NPU Path</h3>
+            <ul><li>TFLite -> ONNX</li><li>DX-COM wrapper</li><li>Hand `.dxnn`</li><li>Palm pipeline plan</li></ul>
+          </div>
+          <div class="milestone">
+            <div class="date">2026-04-20</div>
+            <h3>Dataset</h3>
+            <ul><li>capture tool</li><li>90 frame dataset</li><li>ground-truth notes</li><li>session documentation</li></ul>
+          </div>
+          <div class="milestone">
+            <div class="date">2026-05-08</div>
+            <h3>Experiment Loop</h3>
+            <ul><li>benchmark replay</li><li>async/palm sweep</li><li>correction</li><li>unit tests</li></ul>
+          </div>
+        </div>
+        <div class="grid four">
+          <div class="metric"><strong>44</strong><span>commits</span></div>
+          <div class="metric"><strong>60</strong><span>tracked files</span></div>
+          <div class="metric"><strong>8530+</strong><span>insertions since initial prototype</span></div>
+          <div class="metric"><strong>4</strong><span>tracking backends</span></div>
+        </div>
+      </div>
+      <footer class="footer"><span>Implementation progress</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Validation Status</div>
+        <h2>현재 검증 상태</h2>
+      </header>
+      <div class="content">
+        <div class="grid four">
+          <div class="metric"><strong>18/18</strong><span>unit tests passed</span></div>
+          <div class="metric"><strong>15/15</strong><span>palm decode self-test passed</span></div>
+          <div class="metric"><strong>OK</strong><span>CPU-baseline benchmark smoke</span></div>
+          <div class="metric"><strong>Needs</strong><span>DX-RT service for NPU smoke</span></div>
+        </div>
+        <table class="table">
+          <thead><tr><th>항목</th><th>상태</th><th>발표에서의 표현</th></tr></thead>
+          <tbody>
+            <tr><td>CPU demo path</td><td><span class="tag ok">준비됨</span></td><td>실시간 데모 가능</td></tr>
+            <tr><td>Dataset replay</td><td><span class="tag ok">준비됨</span></td><td>반복 측정 가능</td></tr>
+            <tr><td>NPU full runtime</td><td><span class="tag warn">환경 조건 필요</span></td><td>DX-RT service 확인 후 재실행 필요</td></tr>
+            <tr><td>Palm NPU</td><td><span class="tag bad">실사용 제외</span></td><td>양자화 실패 사례로 설명</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <footer class="footer"><span>Quality and readiness</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Architecture Risks</div>
+        <h2>리뷰어가 물을 가능성이 높은 지점</h2>
+      </header>
+      <div class="content grid two">
+        <div class="card accent-red">
+          <h3>1. Palm이 CPU면 NPU 프로젝트인가?</h3>
+          <p>Hand landmark CNN은 NPU로 실행한다. Palm까지 NPU화는 시도했으나 detector score 품질 문제로 안정 경로에서 제외했다.</p>
+        </div>
+        <div class="card accent-orange">
+          <h3>2. 보정 결과가 overfit 아닌가?</h3>
+          <p>맞다. 현재는 같은 dataset에서 가능성 확인 단계이며, hold-out dataset이 다음 필수 작업이다.</p>
+        </div>
+        <div class="card accent-blue">
+          <h3>3. offline benchmark가 실제 연주 지연을 대체하나?</h3>
+          <p>대체하지 않는다. vision pipeline 비교용이고, 최종 평가는 camera-to-audio E2E 측정이 필요하다.</p>
+        </div>
+        <div class="card accent-green">
+          <h3>4. 최종 데모 전략은?</h3>
+          <p>CPU path로 안정 데모를 확보하고, NPU path는 runtime 복구 후 수치 비교와 함께 보여주는 전략이 안전하다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Expected reviewer questions</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Next Architecture Milestones</div>
+        <h2>최종발표까지의 작업 계획</h2>
+      </header>
+      <div class="content">
+        <div class="flowline">
+          <div class="step" data-step="1"><h3>NPU Runtime</h3><p>DX-RT service, NPU reset, model loading 절차를 고정</p></div>
+          <div class="step" data-step="2"><h3>Hold-out Data</h3><p>조명/거리/손 방향이 다른 capture set 추가</p></div>
+          <div class="step" data-step="3"><h3>Accuracy Eval</h3><p>correction 전후를 training/hold-out으로 분리 비교</p></div>
+          <div class="step" data-step="4"><h3>Latency Eval</h3><p>palm skip/async의 latency-error curve 작성</p></div>
+          <div class="step" data-step="5"><h3>E2E Demo</h3><p>타격 동작부터 오디오 출력까지 실제 latency 측정</p></div>
+        </div>
+        <div class="note">
+          <p>다음 단계의 목표는 기능 추가보다 <strong>재현성 있는 NPU 데모와 정량 결과</strong>를 확보하는 것이다.</p>
+        </div>
+      </div>
+      <footer class="footer"><span>Remaining work</span><span class="counter"></span></footer>
+    </section>
+
+    <section class="slide">
+      <header>
+        <div class="eyebrow">Conclusion</div>
+        <h2>중간발표 결론</h2>
+      </header>
+      <div class="content">
+        <div class="note">
+          <p class="subtitle" style="margin-top:0;">
+            현재 프로젝트는 손동작 기반 가상 악기 데모와 CPU/NPU 비교 실험 구조를 모두 갖춘 상태다.
+            아키텍처상 핵심은 Palm/ROI/Hand를 분리하고, 안정성이 검증된 부분부터 NPU에 배치한 점이다.
+          </p>
+        </div>
+        <div class="grid three">
+          <div class="card accent-green"><h3>구현 완료</h3><p>air drum / piano, 4개 backend, dataset replay, 단위 테스트</p></div>
+          <div class="card accent-orange"><h3>검증 중</h3><p>NPU runtime 재현성, palm skip/async, landmark correction 일반화</p></div>
+          <div class="card accent-blue"><h3>다음 목표</h3><p>hold-out dataset과 실제 E2E latency 기반 최종 평가</p></div>
+        </div>
+      </div>
+      <footer class="footer"><span>End</span><span class="counter"></span></footer>
+    </section>
+  </main>
+
+  <div class="nav" aria-label="Slide navigation">
+    <button id="prev" type="button">‹</button>
+    <button id="next" type="button">›</button>
+  </div>
+  <div class="progress" id="progress"></div>
+
+  <script>
+    const slides = Array.from(document.querySelectorAll(".slide"));
+    const counters = Array.from(document.querySelectorAll(".counter"));
+    const progress = document.getElementById("progress");
+    let current = 0;
+
+    function show(index) {
+      current = Math.max(0, Math.min(slides.length - 1, index));
+      slides.forEach((slide, i) => slide.classList.toggle("active", i === current));
+      counters.forEach((counter, i) => counter.textContent = `${i + 1} / ${slides.length}`);
+      progress.style.width = `${((current + 1) / slides.length) * 100}%`;
+      if (location.hash !== `#${current + 1}`) {
+        history.replaceState(null, "", `#${current + 1}`);
+      }
+    }
+
+    document.getElementById("prev").addEventListener("click", () => show(current - 1));
+    document.getElementById("next").addEventListener("click", () => show(current + 1));
+    window.addEventListener("keydown", event => {
+      if (["ArrowRight", "PageDown", " "].includes(event.key)) show(current + 1);
+      if (["ArrowLeft", "PageUp"].includes(event.key)) show(current - 1);
+      if (event.key === "Home") show(0);
+      if (event.key === "End") show(slides.length - 1);
+    });
+
+    const fromHash = Number(location.hash.replace("#", ""));
+    show(Number.isFinite(fromHash) && fromHash > 0 ? fromHash - 1 : 0);
+  </script>
+</body>
+</html>
