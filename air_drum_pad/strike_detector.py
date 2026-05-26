@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import math
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Callable, Optional
 
@@ -224,3 +225,225 @@ class InstrumentStrikeDetector:
         track_id = f"h{hand_id}_{label}"
         sound_key = self._sound_mapper(hand_id, tip_id)
         return (track_id, sound_key)
+
+
+@dataclass
+class PadZone:
+    """Normalized rectangular drum pad zone."""
+
+    label: str
+    sound_key: str
+    x1: float
+    y1: float
+    x2: float
+    y2: float
+    color: tuple[int, int, int] = field(default_factory=lambda: (100, 200, 100))
+
+    def contains(self, nx: float, ny: float) -> bool:
+        return self.x1 <= nx <= self.x2 and self.y1 <= ny <= self.y2
+
+
+class PadStrikeDetector:
+    """
+    Pad based strike detector for drum mode.
+
+    It keeps the same two-part strike condition as InstrumentStrikeDetector
+    (downward fingertip velocity + joint angular velocity), but returns the
+    PadZone that contains the striking fingertip. Cooldown is tracked per pad
+    label so different pads can be played in rapid succession.
+    """
+
+    def __init__(
+        self,
+        pads: list[PadZone],
+        vy_trigger: float = 0.03,
+        joint_dps_trigger: float = 20.0,
+        cooldown_s: float = 0.12,
+        min_conf: float = 0.5,
+    ) -> None:
+        self.pads = list(pads)
+        self.vy_trigger = vy_trigger
+        self.joint_dps_trigger = joint_dps_trigger
+        self.cooldown_s = cooldown_s
+        self.min_conf = min_conf
+        self._prev_y: dict[tuple[int, int], float] = {}
+        self._prev_t: dict[tuple[int, int], float] = {}
+        self._prev_angle: dict[tuple[int, int], float] = {}
+        self._pad_last_hit: dict[str, float] = {}
+
+    def reset(self) -> None:
+        self._prev_y.clear()
+        self._prev_t.clear()
+        self._prev_angle.clear()
+        self._pad_last_hit.clear()
+
+    def update_finger(
+        self,
+        hand_id: int,
+        tip_id: int,
+        t_s: float,
+        hand_lms: Any,
+        conf: float,
+    ) -> Optional[PadZone]:
+        """Returns the hit PadZone, or None when no pad strike is detected."""
+        vk = (hand_id, tip_id)
+        if conf < self.min_conf:
+            self._prev_y.pop(vk, None)
+            self._prev_t.pop(vk, None)
+            self._prev_angle.pop(vk, None)
+            return None
+
+        tip = hand_lms.landmark[tip_id]
+        nx, ny = tip.x, tip.y
+
+        dt = 1e-4
+        if vk in self._prev_t:
+            dt = max(t_s - self._prev_t[vk], 1e-4)
+        vy = 0.0
+        if vk in self._prev_y:
+            vy = (ny - self._prev_y[vk]) / dt
+
+        joint_dps = 0.0
+        if tip_id in FINGER_ANGLE_CHAIN:
+            a, b, c = FINGER_ANGLE_CHAIN[tip_id]
+            la, lb, lc = hand_lms.landmark[a], hand_lms.landmark[b], hand_lms.landmark[c]
+            ang = _angle_deg_at_b(la.x, la.y, lb.x, lb.y, lc.x, lc.y)
+            if vk in self._prev_angle and vk in self._prev_t:
+                joint_dps = (ang - self._prev_angle[vk]) / dt
+            self._prev_angle[vk] = ang
+
+        self._prev_y[vk] = ny
+        self._prev_t[vk] = t_s
+
+        tip_ok = vy >= self.vy_trigger
+        joint_ok = abs(joint_dps) >= self.joint_dps_trigger
+        if not (tip_ok and joint_ok):
+            return None
+
+        for pad in self.pads:
+            if not pad.contains(nx, ny):
+                continue
+            if t_s - self._pad_last_hit.get(pad.label, -1e9) < self.cooldown_s:
+                return None
+            self._pad_last_hit[pad.label] = t_s
+            return pad
+        return None
+
+
+def default_pad_zones() -> list[PadZone]:
+    """Return the built-in 4x2 drum pad layout in normalized coordinates."""
+    sounds = ["kick", "snare", "hat", "ride", "tom_l", "tom_m", "crash", "clap"]
+    colors = [
+        (180, 80, 80),
+        (80, 180, 80),
+        (80, 80, 200),
+        (180, 180, 60),
+        (60, 180, 180),
+        (180, 60, 180),
+        (60, 120, 200),
+        (180, 120, 60),
+    ]
+    pads: list[PadZone] = []
+    cols, rows = 4, 2
+    x_margin, y_top, y_bot = 0.05, 0.35, 0.85
+    pad_w = (1.0 - 2 * x_margin) / cols
+    pad_h = (y_bot - y_top) / rows
+    for i, (sound, color) in enumerate(zip(sounds, colors)):
+        col, row = i % cols, i // cols
+        x1 = x_margin + col * pad_w
+        y1 = y_top + row * pad_h
+        pads.append(
+            PadZone(
+                sound,
+                sound,
+                x1,
+                y1,
+                x1 + pad_w - 0.01,
+                y1 + pad_h - 0.01,
+                color,
+            )
+        )
+    return pads
+
+
+def _coerce_pad_color(raw: Any, label: str) -> tuple[int, int, int]:
+    if raw is None:
+        return (100, 200, 100)
+    if (
+        not isinstance(raw, (list, tuple))
+        or len(raw) != 3
+        or not all(isinstance(c, int) for c in raw)
+    ):
+        raise ValueError(f"pad '{label}' color는 [B,G,R] 정수 3개 배열이어야 합니다.")
+    if any(c < 0 or c > 255 for c in raw):
+        raise ValueError(f"pad '{label}' color 값은 0~255 범위여야 합니다.")
+    return (int(raw[0]), int(raw[1]), int(raw[2]))
+
+
+def load_pad_zones_json(path: str, valid_keys: frozenset[str]) -> list[PadZone]:
+    """
+    Load drum pad zones from JSON.
+
+    Expected format:
+      {
+        "pads": [
+          {"label":"kick", "sound":"kick",
+           "x1":0.05, "y1":0.35, "x2":0.29, "y2":0.59,
+           "color":[80,80,180]}
+        ]
+      }
+    """
+    p = Path(path)
+    if not p.is_file():
+        raise FileNotFoundError(path)
+    raw = json.loads(p.read_text(encoding="utf-8"))
+    if not isinstance(raw, dict) or "pads" not in raw:
+        raise ValueError('JSON은 {"pads": [...]} 형식이어야 합니다.')
+
+    items = raw["pads"]
+    if not isinstance(items, list) or not items:
+        raise ValueError("pads는 하나 이상의 패드 객체 배열이어야 합니다.")
+
+    pads: list[PadZone] = []
+    for i, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"pads[{i}]는 객체여야 합니다.")
+
+        label = item.get("label")
+        sound_key = item.get("sound", item.get("sound_key"))
+        if not isinstance(label, str) or not label.strip():
+            raise ValueError(f"pads[{i}].label은 비어 있지 않은 문자열이어야 합니다.")
+        if not isinstance(sound_key, str) or not sound_key.strip():
+            raise ValueError(f"pad '{label}' sound는 비어 있지 않은 문자열이어야 합니다.")
+        label = label.strip()
+        sound_key = sound_key.strip()
+        if sound_key not in valid_keys:
+            raise ValueError(
+                f"pad '{label}'의 알 수 없는 sound key: {sound_key}. "
+                f"사용 가능: {sorted(valid_keys)}"
+            )
+
+        coords: dict[str, float] = {}
+        for key in ("x1", "y1", "x2", "y2"):
+            value = item.get(key)
+            if not isinstance(value, (int, float)):
+                raise ValueError(f"pad '{label}' {key}는 숫자여야 합니다.")
+            value_f = float(value)
+            if not 0.0 <= value_f <= 1.0:
+                raise ValueError(f"pad '{label}' {key}는 0~1 범위여야 합니다.")
+            coords[key] = value_f
+        if coords["x1"] >= coords["x2"] or coords["y1"] >= coords["y2"]:
+            raise ValueError(f"pad '{label}' 좌표는 x1<x2, y1<y2 이어야 합니다.")
+
+        pads.append(
+            PadZone(
+                label=label,
+                sound_key=sound_key,
+                x1=coords["x1"],
+                y1=coords["y1"],
+                x2=coords["x2"],
+                y2=coords["y2"],
+                color=_coerce_pad_color(item.get("color"), label),
+            )
+        )
+    return pads

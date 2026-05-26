@@ -35,7 +35,9 @@ from strike_detector import (
     FINGER_LABELS,
     FINGERTIP_INDICES,
     InstrumentStrikeDetector,
-    load_instrument_slots_json,
+    PadStrikeDetector,
+    default_pad_zones,
+    load_pad_zones_json,
     sound_key_for_finger,
 )
 
@@ -77,7 +79,14 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default="",
         metavar="PATH",
-        help="JSON: 손0·손1 각 5손가락 순으로 sound key 10개 (예: instruments.example.json)",
+        help="피아노/손가락 매핑 JSON: 손0·손1 각 5손가락 순 sound key 10개",
+    )
+    p.add_argument(
+        "--drum-pads",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="드럼 패드 레이아웃 JSON (기본: 내장 8-패드 그리드)",
     )
     p.add_argument(
         "--list-instruments",
@@ -181,6 +190,44 @@ def draw_finger_chain(
         cv2.line(frame, pts[i], pts[i + 1], color, 2, cv2.LINE_AA)
 
 
+def draw_pads(
+    frame: np.ndarray,
+    pads: list,
+    active_until: dict[str, float],
+    t: float,
+) -> None:
+    """Draw normalized drum pads with a short bright flash for active hits."""
+    h, w = frame.shape[:2]
+    overlay = frame.copy()
+    draw_items: list[tuple[int, int, int, int, tuple[int, int, int], bool, str]] = []
+    for pad in pads:
+        x1, y1 = int(pad.x1 * w), int(pad.y1 * h)
+        x2, y2 = int(pad.x2 * w), int(pad.y2 * h)
+        is_active = t < active_until.get(pad.label, 0.0)
+        fill_color = (
+            tuple(min(255, int(c) + 100) for c in pad.color)
+            if is_active
+            else tuple(int(c) for c in pad.color)
+        )
+        cv2.rectangle(overlay, (x1, y1), (x2, y2), fill_color, -1)
+        draw_items.append((x1, y1, x2, y2, fill_color, is_active, pad.label))
+
+    cv2.addWeighted(overlay, 0.25, frame, 0.75, 0, frame)
+    for x1, y1, x2, y2, color, is_active, label in draw_items:
+        thickness = 3 if is_active else 2
+        cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
+        cv2.putText(
+            frame,
+            label,
+            (x1 + 8, y1 + 32),
+            cv2.FONT_HERSHEY_SIMPLEX,
+            0.8,
+            (255, 255, 255),
+            2,
+            cv2.LINE_AA,
+        )
+
+
 def main() -> int:
     args = parse_args()
     if args.list_instruments:
@@ -201,25 +248,33 @@ def main() -> int:
         sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
             h, lm, max_hands=mh, sound_slots=s
         )
+        det: InstrumentStrikeDetector | None = InstrumentStrikeDetector(
+            vy_trigger=args.vy_trigger,
+            joint_dps_trigger=args.joint_dps,
+            cooldown_s=args.cooldown,
+            max_hands=args.max_hands,
+            sound_mapper=sound_mapper,
+        )
+        pad_zones = []
+        pad_det: PadStrikeDetector | None = None
     else:
         kit = build_kit()
-        sound_mapper = None
         if args.instruments.strip():
-            slots = load_instrument_slots_json(
-                args.instruments.strip(),
-                valid_keys=frozenset(kit.keys()),
+            print(
+                "--instruments is ignored in drum pad mode; use --drum-pads for pad layout.",
+                file=sys.stderr,
             )
-            sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
-                h, lm, max_hands=mh, sound_slots=s
-            )
-
-    det = InstrumentStrikeDetector(
-        vy_trigger=args.vy_trigger,
-        joint_dps_trigger=args.joint_dps,
-        cooldown_s=args.cooldown,
-        max_hands=args.max_hands,
-        sound_mapper=sound_mapper,
-    )
+        if args.drum_pads.strip():
+            pad_zones = load_pad_zones_json(args.drum_pads.strip(), frozenset(kit.keys()))
+        else:
+            pad_zones = default_pad_zones()
+        pad_det = PadStrikeDetector(
+            pad_zones,
+            vy_trigger=args.vy_trigger,
+            joint_dps_trigger=args.joint_dps,
+            cooldown_s=args.cooldown,
+        )
+        det = None
 
     trails: dict[tuple[int, int], deque[tuple[int, int]]] = defaultdict(
         lambda: deque(maxlen=max(4, args.trail)),
@@ -300,6 +355,7 @@ def main() -> int:
 
     # --- Strike feedback state: list of (expire_time, text, color) ---
     strike_events: list[tuple[float, str, tuple[int, int, int]]] = []
+    active_pads: dict[str, float] = {}
     STRIKE_DISPLAY_SEC = 3.0
 
     try:
@@ -358,18 +414,37 @@ def main() -> int:
                     col = FINGER_COLORS.get(fid, (200, 200, 200))
                     draw_finger_chain(frame, hand_lms, fid, col)
 
-                    hit = det.update_finger(hand_idx, fid, t, hand_lms, conf)
-                    if hit:
-                        _, sk = hit
-                        if sk in kit:
-                            kit[sk].play()
-                        # Record for on-screen feedback
-                        fn = FINGER_LABELS.get(fid, "?")
-                        side = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
-                        strike_events.append(
-                            (t + STRIKE_DISPLAY_SEC, f"{side}:{fn} -> {sk}",
-                             FINGER_COLORS.get(fid, (200, 200, 200)))
-                        )
+                    if args.piano:
+                        assert det is not None
+                        hit = det.update_finger(hand_idx, fid, t, hand_lms, conf)
+                        if hit:
+                            _, sk = hit
+                            if sk in kit:
+                                kit[sk].play()
+                            # Record for on-screen feedback
+                            fn = FINGER_LABELS.get(fid, "?")
+                            side = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
+                            strike_events.append(
+                                (
+                                    t + STRIKE_DISPLAY_SEC,
+                                    f"{side}:{fn} -> {sk}",
+                                    FINGER_COLORS.get(fid, (200, 200, 200)),
+                                )
+                            )
+                    else:
+                        assert pad_det is not None
+                        hit_pad = pad_det.update_finger(hand_idx, fid, t, hand_lms, conf)
+                        if hit_pad:
+                            if hit_pad.sound_key in kit:
+                                kit[hit_pad.sound_key].play()
+                            strike_events.append(
+                                (
+                                    t + STRIKE_DISPLAY_SEC,
+                                    hit_pad.label,
+                                    hit_pad.color,
+                                )
+                            )
+                            active_pads[hit_pad.label] = t + 0.12
 
                     lm = hand_lms.landmark[fid]
                     px = int(lm.x * frame.shape[1])
@@ -407,6 +482,9 @@ def main() -> int:
                     2,
                     cv2.LINE_AA,
                 )
+
+            if not args.piano:
+                draw_pads(frame, pad_zones, active_pads, t)
 
             # --- Compose full-screen canvas: [scaled video | sidebar] ---
             vid_scaled = cv2.resize(frame, (VIDEO_W, VIDEO_H), interpolation=cv2.INTER_LINEAR)

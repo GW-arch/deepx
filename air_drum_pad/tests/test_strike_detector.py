@@ -8,7 +8,11 @@ from pathlib import Path
 from strike_detector import (
     FINGERTIP_INDICES,
     InstrumentStrikeDetector,
+    PadStrikeDetector,
+    PadZone,
+    default_pad_zones,
     load_instrument_slots_json,
+    load_pad_zones_json,
     sound_key_for_finger,
 )
 
@@ -81,6 +85,83 @@ class StrikeDetectorTests(unittest.TestCase):
         det = InstrumentStrikeDetector(min_conf=0.5)
         self.assertIsNone(det.update_finger(0, 8, 0.0, _hand_with_index_pose(0.40, 0.60), 0.1))
         self.assertEqual(det._prev_y, {})
+
+    def test_default_pad_zones_returns_eight_pad_grid(self) -> None:
+        pads = default_pad_zones()
+        self.assertEqual([p.label for p in pads], ["kick", "snare", "hat", "ride", "tom_l", "tom_m", "crash", "clap"])
+        self.assertEqual(len(pads), 8)
+        self.assertTrue(all(0.0 <= p.x1 < p.x2 <= 1.0 for p in pads))
+        self.assertTrue(all(0.0 <= p.y1 < p.y2 <= 1.0 for p in pads))
+
+    def test_load_pad_zones_json_validates_keys_and_coordinates(self) -> None:
+        with tempfile.TemporaryDirectory() as td:
+            path = Path(td) / "pads.json"
+            path.write_text(
+                json.dumps(
+                    {
+                        "pads": [
+                            {
+                                "label": "Kick",
+                                "sound": "kick",
+                                "x1": 0.1,
+                                "y1": 0.2,
+                                "x2": 0.3,
+                                "y2": 0.4,
+                                "color": [1, 2, 3],
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            pads = load_pad_zones_json(str(path), frozenset({"kick"}))
+            self.assertEqual(pads[0], PadZone("Kick", "kick", 0.1, 0.2, 0.3, 0.4, (1, 2, 3)))
+
+            path.write_text(
+                json.dumps({"pads": [{"label": "bad", "sound": "nope", "x1": 0.1, "y1": 0.2, "x2": 0.3, "y2": 0.4}]}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                load_pad_zones_json(str(path), frozenset({"kick"}))
+
+            path.write_text(
+                json.dumps({"pads": [{"label": "bad", "sound": "kick", "x1": 0.8, "y1": 0.2, "x2": 0.3, "y2": 0.4}]}),
+                encoding="utf-8",
+            )
+            with self.assertRaises(ValueError):
+                load_pad_zones_json(str(path), frozenset({"kick"}))
+
+    def test_pad_strike_detector_returns_pad_under_striking_tip(self) -> None:
+        pad = PadZone("snare pad", "snare", 0.70, 0.55, 0.90, 0.90, (10, 20, 30))
+        det = PadStrikeDetector(
+            [pad],
+            vy_trigger=0.10,
+            joint_dps_trigger=1.0,
+            cooldown_s=0.0,
+            min_conf=0.0,
+        )
+
+        self.assertIsNone(det.update_finger(0, 8, 0.0, _hand_with_index_pose(0.40, 0.60), 1.0))
+        self.assertEqual(
+            det.update_finger(0, 8, 0.1, _hand_with_index_pose(0.62, 0.75), 1.0),
+            pad,
+        )
+
+    def test_pad_strike_detector_ignores_hits_outside_pad_and_enforces_cooldown(self) -> None:
+        pad = PadZone("snare pad", "snare", 0.70, 0.55, 0.90, 0.95, (10, 20, 30))
+        det = PadStrikeDetector(
+            [pad],
+            vy_trigger=0.10,
+            joint_dps_trigger=0.0,
+            cooldown_s=0.20,
+            min_conf=0.0,
+        )
+
+        self.assertIsNone(det.update_finger(0, 8, 0.0, _hand_with_index_pose(0.40, 0.60), 1.0))
+        self.assertIsNone(det.update_finger(0, 8, 0.1, _hand_with_index_pose(0.62, 0.50), 1.0))
+        self.assertEqual(det.update_finger(0, 8, 0.2, _hand_with_index_pose(0.70, 0.75), 1.0), pad)
+        self.assertIsNone(det.update_finger(0, 8, 0.3, _hand_with_index_pose(0.78, 0.76), 1.0))
+        self.assertEqual(det.update_finger(0, 8, 0.5, _hand_with_index_pose(0.86, 0.77), 1.0), pad)
 
 
 if __name__ == "__main__":
