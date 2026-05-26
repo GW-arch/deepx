@@ -124,7 +124,7 @@ def latency_chart() -> None:
     ax.set_axisbelow(True)
     for bar, value in zip(bars, values):
         ax.text(bar.get_x() + bar.get_width() / 2, value + 3, f"{value} ms", ha="center", va="bottom", fontsize=10)
-    ax.text(0.5, -0.22, "Values summarize measurements recorded in docs/EXPERIMENTS.md; final audio latency requires manual high-speed-camera capture.", transform=ax.transAxes, ha="center", fontsize=9, color="#475569")
+    ax.text(0.5, -0.22, "Four runtime configurations are compared to isolate palm detection, hand-landmark inference, and NPU dispatch effects; final audio latency still requires manual high-speed-camera capture.", transform=ax.transAxes, ha="center", fontsize=9, color="#475569")
     fig.savefig(OUT / "backend_latency.png", dpi=180, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
