@@ -1,9 +1,13 @@
 # AI Air-Drum Pad: A Vision-Based Contactless Musical Interface with Hand-Landmark Strike Detection
 
 **Final Report**
+
 **Authors:** FILLME
+
 **Affiliation:** FILLME
+
 **Date:** 2026-05-26
+
 **Repository:** `air_drum_pad/` in `git@github.com:GW-arch/deepx.git`
 
 ---
