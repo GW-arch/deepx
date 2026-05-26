@@ -25,7 +25,7 @@
 
 - 실행: `python3 main.py --piano --camera 0`
   **`--instruments` 없이** 켜면 기본적으로 `instruments.piano.example.json`의 **고정 10키 매핑**을 사용합니다.
-  왼손은 **엄지가 가장 높은 음**, **소지가 가장 낮은 음**이고 오른손은 엄지→소지 순으로 올라갑니다.
+  기본값은 왼손 **C4–G4**, 오른손 **C5–G5**입니다.
 - 다른 고정 음 배열을 쓰려면: `instruments.piano.example.json` 참고 후
   `python3 main.py --piano --instruments 내피아노.json --camera 0`
   (`slots` 값은 `C4`, `D#5`, `Bb3` 같은 **음명** 10개)

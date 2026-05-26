@@ -13,9 +13,9 @@ from drumkit_audio import (
 
 
 class DrumkitAudioTests(unittest.TestCase):
-    def test_piano_default_left_hand_descends_thumb_to_pinky(self) -> None:
-        self.assertEqual(PIANO_DEFAULT_SLOTS[:5], ("G4", "F4", "E4", "D4", "C4"))
-        self.assertEqual(PIANO_DEFAULT_SLOTS[5:], ("A4", "B4", "C5", "D5", "E5"))
+    def test_piano_default_uses_c4_g4_left_and_c5_g5_right(self) -> None:
+        self.assertEqual(PIANO_DEFAULT_SLOTS[:5], ("C4", "D4", "E4", "F4", "G4"))
+        self.assertEqual(PIANO_DEFAULT_SLOTS[5:], ("C5", "D5", "E5", "F5", "G5"))
 
     def test_dynamic_piano_left_hand_descends_thumb_to_pinky(self) -> None:
         slots = piano_slots_from_inter_hand_distance(0.30)

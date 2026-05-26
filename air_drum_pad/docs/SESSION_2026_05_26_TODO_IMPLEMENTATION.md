@@ -6,7 +6,7 @@ Date: 2026-05-26
 
 - Fixed piano mapping diagrams so the left/right hand silhouettes match the existing `Hand 0 (Left)` and `Hand 1 (Right)` labels.
 - Replaced drum per-finger mapping diagrams with on-screen rectangle pad diagrams for default pads and the full drum sound catalog.
-- Corrected the piano default slots so the left hand descends from thumb to pinky (`G4, F4, E4, D4, C4`) while the right hand remains ascending (`A4` through `E5`).
+- Corrected the piano default slots to left hand `C4, D4, E4, F4, G4` and right hand `C5, D5, E5, F5, G5`.
 - Updated runtime drum UI wording to describe rectangle pad hits instead of hand/finger-to-drum mapping.
 - Lengthened piano notes to about 0.5 seconds and extended short drum synthesized samples so hits remain audible longer.
 - Tuned strike responsiveness for both piano and drum modes:

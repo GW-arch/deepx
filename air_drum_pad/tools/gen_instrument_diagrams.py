@@ -243,10 +243,11 @@ def _draw_pad_layout(
             alpha=0.82,
         )
         ax.add_patch(rect)
+        label_text = pad.label if pad.label == pad.sound_key else f"{pad.label}\n{pad.sound_key}"
         ax.text(
             px + pw / 2,
             py + ph / 2,
-            f"{pad.label}\n{pad.sound_key}",
+            label_text,
             fontsize=11,
             fontweight="bold",
             ha="center",
@@ -353,7 +354,7 @@ PRESETS: dict[str, dict] = {
     "piano_default": {
         "kind": "hand",
         "title": "Piano — Default C Major",
-        "subtitle": "10-slot piano: left thumb highest→pinky lowest, right thumb→pinky rising",
+        "subtitle": "10-slot piano: left hand C4–G4, right hand C5–G5",
         "run_cmd": "python3 main.py --piano --camera 0",
         "slots": _default_piano_slots,
     },
