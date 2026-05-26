@@ -192,13 +192,13 @@ _PITCH_CLASS: dict[str, int] = {
 }
 
 # 손0(Left) 엄지→소지, 손1(Right) 엄지→소지.
-# Default fixed piano layout: left hand C4–G4, right hand C5–G5.
+# Default fixed piano layout: left hand G4→C4 (thumb→pinky), right hand C5→G5.
 PIANO_DEFAULT_SLOTS: tuple[str, ...] = (
-    "C4",
-    "D4",
-    "E4",
-    "F4",
     "G4",
+    "F4",
+    "E4",
+    "D4",
+    "C4",
     "C5",
     "D5",
     "E5",

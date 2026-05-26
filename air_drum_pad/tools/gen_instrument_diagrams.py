@@ -354,7 +354,7 @@ PRESETS: dict[str, dict] = {
     "piano_default": {
         "kind": "hand",
         "title": "Piano — Default C Major",
-        "subtitle": "10-slot piano: left hand C4–G4, right hand C5–G5",
+        "subtitle": "10-slot piano: left thumb G4→pinky C4, right hand C5–G5",
         "run_cmd": "python3 main.py --piano --camera 0",
         "slots": _default_piano_slots,
     },
