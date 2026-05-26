@@ -17,6 +17,16 @@ cd air_drum_pad
 python3 tools/export_report_documents.py
 ```
 
+## P0 — Project demo submission
+
+- [ ] Confirm demo submission requirements: format, duration, deadline, upload location, and whether source code/report links are required.
+- [ ] Record a working demo video showing both modes:
+  - drum pad mode with visible pad hits and audible sounds,
+  - piano mode with the final left/right note mapping and audible notes.
+- [ ] Include a short narration or captions explaining the camera setup, hand tracking, strike detection, and mode switching.
+- [ ] Export the demo video in the required format (for example `.mp4`) and store the final filename/link in this TODO.
+- [ ] Do a final playback check on another machine before submission.
+
 ## P0 — Finish report deliverables
 
 - [ ] Fill report metadata in both language versions:
