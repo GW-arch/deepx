@@ -7,6 +7,7 @@ from pathlib import Path
 
 from strike_detector import (
     FINGERTIP_INDICES,
+    FINGER_ANGLE_CHAIN,
     InstrumentStrikeDetector,
     PadStrikeDetector,
     PadZone,
@@ -36,6 +37,16 @@ def _hand_with_index_pose(tip_y: float, tip_x: float) -> _Hand:
     lms[5] = _Lm(0.40, 0.40)
     lms[6] = _Lm(0.50, 0.50)
     lms[8] = _Lm(tip_x, tip_y)
+    return _Hand(lms)
+
+
+def _hand_with_tip_pose(tip_id: int, tip_y: float, tip_x: float) -> _Hand:
+    """Build a minimal 21-landmark hand with a controlled chain for any fingertip."""
+    lms = [_Lm() for _ in range(21)]
+    a, b, c = FINGER_ANGLE_CHAIN[tip_id]
+    lms[a] = _Lm(0.40, 0.40)
+    lms[b] = _Lm(0.50, 0.50)
+    lms[c] = _Lm(tip_x, tip_y)
     return _Hand(lms)
 
 
@@ -80,6 +91,27 @@ class StrikeDetectorTests(unittest.TestCase):
         hit = det.update_finger(0, 8, 0.1, _hand_with_index_pose(0.62, 0.75), 1.0)
 
         self.assertEqual(hit, ("h0_index", "snare"))
+
+    def test_middle_finger_uses_more_sensitive_threshold(self) -> None:
+        base_args = dict(
+            vy_trigger=0.001,
+            joint_dps_trigger=20.0,
+            cooldown_s=0.0,
+            min_tip_disp=0.0,
+            min_conf=0.0,
+            sound_mapper=lambda _h, _lm: "snare",
+        )
+
+        index_det = InstrumentStrikeDetector(**base_args)
+        self.assertIsNone(index_det.update_finger(0, 8, 0.0, _hand_with_tip_pose(8, 0.550, 0.60), 1.0))
+        self.assertIsNone(index_det.update_finger(0, 8, 0.1, _hand_with_tip_pose(8, 0.559, 0.61), 1.0))
+
+        middle_det = InstrumentStrikeDetector(**base_args)
+        self.assertIsNone(middle_det.update_finger(0, 12, 0.0, _hand_with_tip_pose(12, 0.550, 0.60), 1.0))
+        self.assertEqual(
+            middle_det.update_finger(0, 12, 0.1, _hand_with_tip_pose(12, 0.559, 0.61), 1.0),
+            ("h0_middle", "snare"),
+        )
 
     def test_low_confidence_resets_tracking(self) -> None:
         det = InstrumentStrikeDetector(min_conf=0.5)
@@ -162,6 +194,22 @@ class StrikeDetectorTests(unittest.TestCase):
         self.assertEqual(det.update_finger(0, 8, 0.2, _hand_with_index_pose(0.70, 0.75), 1.0), pad)
         self.assertIsNone(det.update_finger(0, 8, 0.3, _hand_with_index_pose(0.78, 0.76), 1.0))
         self.assertEqual(det.update_finger(0, 8, 0.5, _hand_with_index_pose(0.86, 0.77), 1.0), pad)
+
+    def test_pad_strike_detector_uses_middle_finger_sensitivity(self) -> None:
+        pad = PadZone("middle pad", "snare", 0.50, 0.50, 0.75, 0.75, (10, 20, 30))
+        det = PadStrikeDetector(
+            [pad],
+            vy_trigger=0.001,
+            joint_dps_trigger=20.0,
+            cooldown_s=0.0,
+            min_conf=0.0,
+        )
+
+        self.assertIsNone(det.update_finger(0, 12, 0.0, _hand_with_tip_pose(12, 0.550, 0.60), 1.0))
+        self.assertEqual(
+            det.update_finger(0, 12, 0.1, _hand_with_tip_pose(12, 0.559, 0.61), 1.0),
+            pad,
+        )
 
 
 if __name__ == "__main__":

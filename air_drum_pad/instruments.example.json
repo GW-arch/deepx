@@ -1,5 +1,5 @@
 {
-  "description": "순서: 손0 엄지,검지,중지,약지,소지 → 손1 엄지,검지,중지,약지,소지 (MediaPipe hand 0,1 순)",
+  "description": "LEGACY per-finger slot example kept for compatibility with strike_detector helpers. Drum mode now uses on-screen rectangle pads; copy pads.example.json and pass --drum-pads instead. Slot order here is 손0 엄지→소지, 손1 엄지→소지.",
   "slots": [
     "kick",
     "snare",

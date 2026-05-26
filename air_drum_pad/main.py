@@ -61,16 +61,16 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--vy-trigger",
         type=float,
-        default=0.03,
-        help="손끝 하강 속도(정규화 좌표/s) 하한",
+        default=0.025,
+        help="손끝 하강 속도(정규화 좌표/s) 하한 (middle finger는 내부적으로 더 민감하게 보정)",
     )
     p.add_argument(
         "--joint-dps",
         type=float,
-        default=20.0,
+        default=16.0,
         help="관절 각속도(|deg/s|) 하한 — 손가락 관절이 실제로 움직일 때",
     )
-    p.add_argument("--cooldown", type=float, default=0.12, help="같은 손가락 연타 쿨다운(초)")
+    p.add_argument("--cooldown", type=float, default=0.10, help="같은 손가락/패드 연타 쿨다운(초)")
     p.add_argument("--max-hands", type=int, default=2, choices=[1, 2])
     p.add_argument("--model-complexity", type=int, default=0, choices=[0, 1])
     p.add_argument("--trail", type=int, default=24, help="손끝 궤적 길이(프레임)")
@@ -307,8 +307,9 @@ def main() -> int:
     be = f"{args.backend.upper()}"
     if args.backend == "npu" and args.dxnn.strip():
         be = f"NPU:{Path(args.dxnn).name}"
+    mapping_hint = "(손,손가락)→음" if args.piano else "on-screen rectangle pad → drum sound"
     print(
-        f"Air-Drum [{mode}] backend={be}: q=quit | tip↓ + joint motion → hit | (손,손가락)→음",
+        f"Air-Drum [{mode}] backend={be}: q=quit | tip↓ + joint motion → hit | {mapping_hint}",
         flush=True,
     )
 
@@ -357,6 +358,7 @@ def main() -> int:
     strike_events: list[tuple[float, str, tuple[int, int, int]]] = []
     active_pads: dict[str, float] = {}
     STRIKE_DISPLAY_SEC = 3.0
+    PAD_FLASH_SEC = 0.20
 
     try:
         fail_streak = 0
@@ -444,7 +446,7 @@ def main() -> int:
                                     hit_pad.color,
                                 )
                             )
-                            active_pads[hit_pad.label] = t + 0.12
+                            active_pads[hit_pad.label] = t + PAD_FLASH_SEC
 
                     lm = hand_lms.landmark[fid]
                     px = int(lm.x * frame.shape[1])
@@ -492,7 +494,7 @@ def main() -> int:
             sidebar = np.full((screen_h, SIDEBAR_W, 3), SIDEBAR_BG, dtype=np.uint8)
 
             # Sidebar title
-            _stitle = "Piano" if args.piano else "Drum Kit"
+            _stitle = "Piano" if args.piano else "Drum Pads"
             cv2.putText(sidebar, _stitle, (10, 36),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
             cv2.line(sidebar, (10, 48), (SIDEBAR_W - 10, 48), (80, 80, 80), 1)

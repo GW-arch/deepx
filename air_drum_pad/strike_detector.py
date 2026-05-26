@@ -26,6 +26,15 @@ FINGER_ANGLE_CHAIN: dict[int, tuple[int, int, int]] = {
     20: (17, 18, 20),
 }
 
+# Per-finger tuning from live use: middle-finger flexion is often smaller in
+# camera coordinates, so it needs a lower angular threshold to avoid missed hits.
+FINGER_VY_TRIGGER_SCALE: dict[int, float] = {
+    12: 0.85,  # middle
+}
+FINGER_JOINT_DPS_TRIGGER_SCALE: dict[int, float] = {
+    12: 0.65,  # middle
+}
+
 _DEFAULT_SOUND_BY_SLOT: tuple[str, ...] = (
     "kick",
     "snare",
@@ -125,10 +134,10 @@ class InstrumentStrikeDetector:
     def __init__(
         self,
         *,
-        vy_trigger: float = 0.01,
-        joint_dps_trigger: float = 120.0,
-        cooldown_s: float = 0.12,
-        min_tip_disp: float = 0.012,
+        vy_trigger: float = 0.025,
+        joint_dps_trigger: float = 16.0,
+        cooldown_s: float = 0.10,
+        min_tip_disp: float = 0.008,
         min_conf: float = 0.5,
         max_hands: int = 2,
         sound_mapper: Optional[Callable[[int, int], str]] = None,
@@ -204,8 +213,12 @@ class InstrumentStrikeDetector:
         self._prev_t[vk] = t_s
 
         # 아래로 빠른 내리침 + 관절이 동시에 움직임 (펴짐/절곡 급변)
-        tip_ok = vy >= self.vy_trigger
-        joint_ok = abs(joint_dps) >= self.joint_dps_trigger
+        tip_threshold = self.vy_trigger * FINGER_VY_TRIGGER_SCALE.get(tip_id, 1.0)
+        joint_threshold = (
+            self.joint_dps_trigger * FINGER_JOINT_DPS_TRIGGER_SCALE.get(tip_id, 1.0)
+        )
+        tip_ok = vy >= tip_threshold
+        joint_ok = abs(joint_dps) >= joint_threshold
 
         if not (tip_ok and joint_ok):
             return None
@@ -256,9 +269,9 @@ class PadStrikeDetector:
     def __init__(
         self,
         pads: list[PadZone],
-        vy_trigger: float = 0.03,
-        joint_dps_trigger: float = 20.0,
-        cooldown_s: float = 0.12,
+        vy_trigger: float = 0.025,
+        joint_dps_trigger: float = 16.0,
+        cooldown_s: float = 0.10,
         min_conf: float = 0.5,
     ) -> None:
         self.pads = list(pads)
@@ -315,8 +328,12 @@ class PadStrikeDetector:
         self._prev_y[vk] = ny
         self._prev_t[vk] = t_s
 
-        tip_ok = vy >= self.vy_trigger
-        joint_ok = abs(joint_dps) >= self.joint_dps_trigger
+        tip_threshold = self.vy_trigger * FINGER_VY_TRIGGER_SCALE.get(tip_id, 1.0)
+        joint_threshold = (
+            self.joint_dps_trigger * FINGER_JOINT_DPS_TRIGGER_SCALE.get(tip_id, 1.0)
+        )
+        tip_ok = vy >= tip_threshold
+        joint_ok = abs(joint_dps) >= joint_threshold
         if not (tip_ok and joint_ok):
             return None
 
