@@ -137,6 +137,14 @@ def _split_table_row(line: str) -> list[str]:
 
 def inline_to_reportlab(text: str) -> str:
     text = html.escape(text)
+    text = (
+        text.replace("&lt;u&gt;", "<u>")
+        .replace("&lt;/u&gt;", "</u>")
+        .replace("&lt;strong&gt;", "<b>")
+        .replace("&lt;/strong&gt;", "</b>")
+        .replace("&lt;b&gt;", "<b>")
+        .replace("&lt;/b&gt;", "</b>")
+    )
     text = re.sub(r"`([^`]+)`", r"<font name='ReportMono'>\1</font>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", text)
     return text
@@ -311,15 +319,73 @@ def docx_para(text: str, style: str = "Normal") -> str:
 
 
 def inline_runs(text: str) -> str:
-    # Keep inline formatting simple and robust: strip markdown markers visibly where possible.
-    text = re.sub(r"\*\*([^*]+)\*\*", r"\1", text)
-    text = re.sub(r"`([^`]+)`", r"\1", text)
-    parts = text.split("\n")
+    # Minimal rich-text parser for the report subset: bold (**...** or HTML
+    # strong/b), underline (<u>...</u>), inline code (`...`), and line breaks.
     runs: list[str] = []
-    for i, part in enumerate(parts):
-        runs.append(f'<w:r><w:t xml:space="preserve">{escape(part)}</w:t></w:r>')
-        if i != len(parts) - 1:
-            runs.append("<w:r><w:br/></w:r>")
+    buf: list[str] = []
+    bold = False
+    underline = False
+    mono = False
+    i = 0
+
+    def flush() -> None:
+        nonlocal buf
+        if not buf:
+            return
+        chunk = "".join(buf)
+        buf = []
+        props: list[str] = []
+        if bold:
+            props.append("<w:b/><w:bCs/>")
+        if underline:
+            props.append('<w:u w:val="single"/>')
+        if mono:
+            props.append('<w:rFonts w:ascii="Courier New" w:hAnsi="Courier New"/>')
+        rpr = f"<w:rPr>{''.join(props)}</w:rPr>" if props else ""
+        parts = chunk.split("\n")
+        for j, part in enumerate(parts):
+            if part:
+                runs.append(f'<w:r>{rpr}<w:t xml:space="preserve">{escape(part)}</w:t></w:r>')
+            if j != len(parts) - 1:
+                runs.append("<w:r><w:br/></w:r>")
+
+    while i < len(text):
+        if text.startswith("**", i):
+            flush()
+            bold = not bold
+            i += 2
+        elif text.startswith("<u>", i):
+            flush()
+            underline = True
+            i += 3
+        elif text.startswith("</u>", i):
+            flush()
+            underline = False
+            i += 4
+        elif text.startswith("<strong>", i):
+            flush()
+            bold = True
+            i += 8
+        elif text.startswith("</strong>", i):
+            flush()
+            bold = False
+            i += 9
+        elif text.startswith("<b>", i):
+            flush()
+            bold = True
+            i += 3
+        elif text.startswith("</b>", i):
+            flush()
+            bold = False
+            i += 4
+        elif text[i] == "`":
+            flush()
+            mono = not mono
+            i += 1
+        else:
+            buf.append(text[i])
+            i += 1
+    flush()
     return "".join(runs)
 
 

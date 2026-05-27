@@ -40,6 +40,37 @@ def panda_icon() -> None:
     def box(x1: float, y1: float, x2: float, y2: float) -> tuple[int, int, int, int]:
         return (s(x1), s(y1), s(x2), s(y2))
 
+    def text_width(text: str, font: ImageFont.ImageFont) -> int:
+        bbox = draw.textbbox((0, 0), text, font=font)
+        return bbox[2] - bbox[0]
+
+    def draw_underlined_acronym(x: float, y: float) -> None:
+        acronym_color = (8, 145, 178, 255)
+        body_color = (51, 65, 85, 255)
+        initial_font = _font(s(35), bold=True)
+        rest_font = _font(s(35), bold=True)
+        cursor = s(x)
+        baseline_y = s(y)
+        underline_y = baseline_y + s(43)
+        pieces = [
+            ("P", "ose-"),
+            ("A", "ware  •  "),
+            ("N", "PU  •  "),
+            ("D", "igital "),
+            ("A", "udio"),
+        ]
+        for initial, rest in pieces:
+            draw.text((cursor, baseline_y), initial, font=initial_font, fill=acronym_color)
+            initial_w = text_width(initial, initial_font)
+            draw.line(
+                [(cursor, underline_y), (cursor + initial_w, underline_y)],
+                fill=acronym_color,
+                width=s(3),
+            )
+            cursor += initial_w
+            draw.text((cursor, baseline_y), rest, font=rest_font, fill=body_color)
+            cursor += text_width(rest, rest_font)
+
     # Soft card background.
     draw.rounded_rectangle(
         box(24, 24, width - 24, height - 24),
@@ -86,10 +117,9 @@ def panda_icon() -> None:
 
     # PANDA logotype and expansion.
     title_font = _font(s(92), bold=True)
-    subtitle_font = _font(s(35), bold=True)
     small_font = _font(s(27), bold=False)
     draw.text((s(525), s(92)), "PANDA", font=title_font, fill=(15, 23, 42, 255))
-    draw.text((s(531), s(193)), "Pose-Aware • NPU-Driven • Digital Audio", font=subtitle_font, fill=(51, 65, 85, 255))
+    draw_underlined_acronym(531, 193)
     draw.text((s(532), s(248)), "Contactless drum and piano performance with hand-landmark strike detection", font=small_font, fill=(71, 85, 105, 255))
 
     # Small friendly NPU chip badge.
