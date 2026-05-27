@@ -43,6 +43,7 @@ The implemented project contributes:
 - A common strike detector using fingertip velocity plus joint angular velocity.
 - A pad-zone drum interface with configurable rectangular hit regions and visual flash feedback.
 - A piano interface with a corrected default mapping: left thumb `G4`, left pinky `C4`, right hand `C5–G5`.
+- A mirrored selfie-view display, enabled by default, so the performer's left/right hand motion matches the visible camera feed and on-screen targets.
 - Generated interface diagrams for both modes.
 - Report figures generated programmatically for system architecture, strike logic, and backend latency.
 - A repeatable validation pipeline covering mapping, detector behavior, pad validation, ROI helpers, and benchmark helpers.
@@ -211,7 +212,9 @@ The NPU-full path is architecturally preferred for accurate hand localization, b
 
 ### 5.2 User Interface
 
-The runtime display contains the camera feed, hand/finger landmark trails, mode-specific overlays, and a sidebar. In drum mode, rectangles are drawn directly on the camera feed and flash briefly when hit. In piano mode, the sidebar shows the hand-to-note mapping and recent note events.
+The runtime display contains the camera feed, hand/finger landmark trails, mode-specific overlays, and a sidebar. The camera feed is mirrored by default, producing a selfie-style interface in which moving a hand leftward in physical space also moves it leftward on the screen. This small interface detail is important for playability: without the mirror flip, the performer must mentally invert left/right motion while aiming at drum pads or piano cues. A `--no-mirror` option remains available for camera setups that already provide mirrored input.
+
+In drum mode, rectangles are drawn directly on the mirrored camera feed and flash briefly when hit. In piano mode, the sidebar shows the hand-to-note mapping and recent note events.
 
 The generated diagrams are used both as report figures and as sidebar assets, keeping the report and runtime UI consistent.
 
