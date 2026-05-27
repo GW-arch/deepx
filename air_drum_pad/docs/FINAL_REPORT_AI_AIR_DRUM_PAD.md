@@ -90,13 +90,13 @@ A custom JSON piano layout example is also generated using the same default slot
 
 ![Figure 5. Piano custom-layout example generated programmatically for this report.](../instruments/piano_custom.png)
 
-### 2.2 Manual Screenshots Still Required
+### 2.2 Live Interface Screenshots
 
-Some figures require live hardware capture rather than offline generation. They are left as FILLME placeholders:
+Live screenshots were captured from the guided evaluator after the mirror-view update. The drum screenshot shows rectangular pad targeting on the mirrored camera feed; the piano screenshot shows screen-side hand mapping with the current note and suggested finger.
 
-![FILLME: final live full-screen drum mode with camera feed, pad overlay, sidebar, and strike list.](FILLME_live_drum_mode_screenshot.png)
+![Figure 6. Live guided drum evaluation screenshot captured from the mirrored interface.](figures/guided_eval_drum_live.png)
 
-![FILLME: final live full-screen piano mode with camera feed, finger trails, sidebar, and strike list.](FILLME_live_piano_mode_screenshot.png)
+![Figure 7. Live guided piano evaluation screenshot captured from the mirrored interface.](figures/guided_eval_piano_live.png)
 
 ---
 
@@ -128,9 +128,9 @@ For each fingertip, a three-point chain is selected for angular motion. For exam
 
 ### 4.2 Strike Detection
 
-A strike is emitted only when two independent conditions hold at the same time. Figure 6 shows the decision logic.
+A strike is emitted only when two independent conditions hold at the same time. Figure 8 shows the decision logic.
 
-![Figure 6. Strike-decision logic diagram generated programmatically for this report.](figures/strike_logic.png)
+![Figure 8. Strike-decision logic diagram generated programmatically for this report.](figures/strike_logic.png)
 
 Let \(y_t\) be the fingertip's normalized vertical image coordinate at time \(t\). The downward fingertip velocity is approximated by
 
@@ -214,7 +214,7 @@ The NPU-full path is architecturally preferred for accurate hand localization, b
 
 The runtime display contains the camera feed, hand/finger landmark trails, mode-specific overlays, and a sidebar. The camera feed is mirrored by default, producing a selfie-style interface in which moving a hand leftward in physical space also moves it leftward on the screen. This small interface detail is important for playability: without the mirror flip, the performer must mentally invert left/right motion while aiming at drum pads or piano cues. A `--no-mirror` option remains available for camera setups that already provide mirrored input.
 
-In drum mode, rectangles are drawn directly on the mirrored camera feed and flash briefly when hit. In piano mode, the sidebar shows the hand-to-note mapping and recent note events.
+In drum mode, rectangles are drawn directly on the mirrored camera feed and flash briefly when hit. In piano mode, the note mapping is also tied to screen side rather than raw tracker hand order: the screen-left hand maps to the left-hand notes and the screen-right hand maps to the right-hand notes. This prevents note assignments from changing when the hand tracker changes the order of detected hands.
 
 The generated diagrams are used both as report figures and as sidebar assets, keeping the report and runtime UI consistent.
 
@@ -258,21 +258,19 @@ The hardware/software environment for the recorded prototype measurements was:
 
 The palm detector was also tested as an NPU `.dxnn` candidate. Although the NPU palm model was fast at roughly 12 ms, INT8 quantization damaged the score head: ONNX-to-NPU score correlation was approximately -0.11, making real hand detection unreliable. Therefore, all accurate palm-based configurations use CPU TFLite palm detection, and palm detection remains the main latency bottleneck.
 
-![Figure 7. Backend latency comparison generated programmatically for this report.](figures/backend_latency.png)
+![Figure 9. Backend latency comparison generated programmatically for this report.](figures/backend_latency.png)
 
 ### 6.3 Required Manual Measurements
 
 A complete academic evaluation still requires manual measurements of the physical interaction loop. The protocols are defined here so that the missing data can be inserted directly into this report rather than stored only in auxiliary notes.
 
 1. **End-to-end audio latency:** record the performer's hand and the speaker output simultaneously using a high-speed camera or synchronized audio/video setup. For each strike, identify the video frame where the downward hit begins and the first audio waveform onset at the speaker. Compute `Delta t = t_audio - t_video`. Use at least 30 strikes per mode and report mean, standard deviation, and P95 latency.
-2. **Hit accuracy:** run guided trials in both drum and piano modes using the built-in visual/audio cue evaluator. The evaluator displays a predefined beat sequence, records detected strike events, matches events to scheduled cues, and exports `cues.csv`, `events.csv`, `matches.csv`, `summary.json`, `summary.md`, and an optional review video. A true positive is an intended strike detected within the allowed time window. A false negative is an intended strike with no valid event. A false positive is an unintended or duplicate event outside the allowed window. Report TP, FP, FN, precision, recall, and qualitative failure cases.
+2. **Hit accuracy:** run guided trials in both drum and piano modes using the built-in visual/audio cue evaluator. The evaluator displays a predefined beat sequence, records detected strike events, matches events to scheduled cues, and exports `cues.csv`, `events.csv`, `matches.csv`, `summary.json`, `summary.md`, and an optional review video. A true positive is an intended strike detected within the allowed time window. A false negative is an intended strike with no valid event. A false positive is an unintended or duplicate event outside the allowed window. The pilot guided results are reported in Section 7.3.
 3. **Per-run logging:** retain the internal build identifier, backend, camera resolution, model checksums, `vy_trigger`, `joint_dps`, `cooldown`, lighting conditions, and raw event log fields such as `t`, `frame_id`, `infer_ms`, `hand_id`, `finger_id`, `pad/note`, and `trigger`.
 
-The following figures are still placeholders because they require live hardware capture.
+The following figure is still a placeholder because it requires synchronized high-speed video/audio capture.
 
 ![FILLME: high-speed-camera setup showing hand motion and speaker/audio waveform for E2E latency measurement.](FILLME_latency_measurement_setup.png)
-
-![FILLME: plot or table image from manual hit-accuracy experiment across piano and drum modes.](FILLME_hit_accuracy_results.png)
 
 ---
 
@@ -302,7 +300,20 @@ The latest validation run produced:
 
 The unit tests cover default piano mapping, synthetic audio duration, pad-zone generation, pad JSON validation, instrument slot validation, strike detector thresholds, middle-finger sensitivity, cooldown behavior, ROI helpers, benchmark helper functions, dataset capture indexing, and the guided evaluation cue/matching/output helpers.
 
-### 7.3 Backend Performance Summary
+### 7.3 Guided Live Evaluation Results
+
+A guided live evaluation was run on May 27, 2026 using the mirrored camera interface, CPU MediaPipe backend, strict strike thresholds, and global event consolidation to reduce duplicate multi-finger hits. The sequence was intentionally slow so that the performer could read the on-screen target before moving: 15 BPM, one pass through each target list, 7 s lead-in, and a 2.0 s post-cue matching window. The evaluator records one accepted output event per 1.2 s global cooldown interval and suppresses extra simultaneous candidates from the same physical motion.
+
+| Mode | Cues | TP | FP | FN | Precision | Recall / target accuracy | Mean cue-to-detection latency |
+|------|-----:|---:|---:|---:|----------:|-------------------------:|------------------------------:|
+| Drum pads | 8 | 7 | 9 | 1 | 43.8% | 87.5% | 660 ms |
+| Piano | 10 | 2 | 13 | 8 | 13.3% | 20.0% | 1034 ms |
+
+![Figure 10. Guided evaluation plot generated from the slow mirrored drum and piano runs.](figures/guided_eval_results.png)
+
+The drum-pad interface performed substantially better than the piano interface in this pilot run. This is expected because drum mode only requires the fingertip strike to land inside a visible rectangle, while piano mode requires both accurate finger identity and stable screen-side hand mapping. The piano result therefore highlights a remaining usability issue rather than a failure of palm detection: the system is detecting fingertip strikes, but many detected notes do not match the prompted note. The cue-to-detection latency values include human reaction time and should not be interpreted as acoustic motion-to-speaker latency.
+
+### 7.4 Backend Performance Summary
 
 The table below reports the high-level latency comparison for the four evaluated runtime configurations. The `cpu` row is a practical reference path. The `cpu-baseline` and `npu-full` rows form the controlled CPU-vs-NPU comparison because they share the same palm→ROI→hand pipeline and differ only in hand landmark inference. The `npu` dual-halves row is not an accuracy-equivalent baseline; it is a low-latency approximation that removes palm detection to estimate the best-case live-demo path.
 
@@ -315,7 +326,7 @@ The table below reports the high-level latency comparison for the four evaluated
 
 The result has two important implications. First, moving only the hand landmark model to NPU is insufficient when CPU palm detection still dominates the accurate pipeline. Second, the low-latency dual-halves path is valuable for demonstrations, but it should not be treated as accuracy-equivalent to the palm-based configurations because it assumes stable hand placement.
 
-### 7.4 Offline Dataset Benchmark Summary
+### 7.5 Offline Dataset Benchmark Summary
 
 A 90-frame offline benchmark was run to compare the two structurally matched pipelines, `cpu-baseline` and `npu-full`, using the same captured input frames. This benchmark removes live camera variability and focuses on per-frame processing latency and landmark agreement.
 
@@ -372,7 +383,7 @@ The current prototype has several limitations:
 
 - **No complete final E2E audio-latency measurement** is included; a manual high-speed-camera or synchronized audio/video experiment is required.
 - **No formal user study** has been conducted.
-- **No final hit-accuracy table** is available for tempo-controlled trials.
+- **Guided hit-accuracy results are preliminary**: the pilot run has one performer and one slow tempo, and piano accuracy remains low without further calibration.
 - **Depth ambiguity** remains because the system uses a single RGB camera.
 - **Lighting and background sensitivity** may affect landmark stability.
 - **NPU-full accuracy and latency** remain limited by CPU palm detection.
@@ -384,13 +395,13 @@ The current prototype has several limitations:
 
 Recommended next steps are:
 
-1. Capture final live screenshots for the FILLME figures.
-2. Measure E2E audio latency using a high-speed camera and synchronized audio waveform.
-3. Run hit-accuracy trials for both modes at multiple tempos.
+1. Measure E2E audio latency using a high-speed camera and synchronized audio waveform.
+2. Run guided hit-accuracy trials for both modes at multiple tempos.
+3. Improve piano-specific calibration for finger identity, screen-side hand mapping, and per-user strike thresholds.
 4. Add per-user calibration for pad positions, handedness, and strike thresholds.
 5. Investigate palm detector alternatives suitable for NPU deployment.
 6. Add optional MIDI output so the system can drive external instruments.
-7. Run the guided visual/audio cue evaluator to collect final hit-accuracy results for both modes.
+7. Expand the guided evaluation to more participants and longer randomized cue sequences.
 8. Conduct a small user study comparing playability of drum and piano modes.
 
 ---

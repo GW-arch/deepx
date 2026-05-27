@@ -710,6 +710,8 @@ def run_live(args: argparse.Namespace) -> int:
     start_t = time.perf_counter()
     frame_id = 0
     last_flash: tuple[float, str] | None = None
+    last_accepted_event_t = -1.0e9
+    suppressed_candidate_count = 0
 
     print(
         f"[guided-eval] mode={mode} backend={args.backend} cues={len(cues)} output={output_dir}",
@@ -746,6 +748,11 @@ def run_live(args: argparse.Namespace) -> int:
             res = tracker.process(rgb)
             landmarks_list = res.multi_hand_landmarks or []
             handedness_list = res.multi_handedness or []
+            screen_side_by_hand = {
+                i: (0 if hand_lms.landmark[0].x < 0.5 else 1)
+                for i, hand_lms in enumerate(landmarks_list)
+            }
+            frame_candidates: list[tuple[str, str, str]] = []
 
             for hand_idx, hand_lms in enumerate(landmarks_list):
                 conf = 1.0
@@ -770,24 +777,37 @@ def run_live(args: argparse.Namespace) -> int:
                 for fid in FINGERTIP_INDICES:
                     if mode == "piano":
                         assert det is not None
-                        hit = det.update_finger(hand_idx, fid, elapsed, hand_lms, conf)
+                        mapped_hand_idx = screen_side_by_hand.get(hand_idx, hand_idx)
+                        hit = det.update_finger(mapped_hand_idx, fid, elapsed, hand_lms, conf)
                         if not hit:
                             continue
                         _track_id, label = hit
                         label = normalize_label(label, mode)
-                        if label in kit:
-                            kit[label].play()
-                        detail = f"{hand_label}:{FINGER_LABELS.get(fid, fid)}"
+                        side_label = "L" if mapped_hand_idx == 0 else "R"
+                        detail = f"{side_label}{hand_idx}:{FINGER_LABELS.get(fid, fid)}"
+                        frame_candidates.append((label, detail, label))
                     else:
                         assert pad_det is not None
                         hit_pad = pad_det.update_finger(hand_idx, fid, elapsed, hand_lms, conf)
                         if not hit_pad:
                             continue
                         label = normalize_label(hit_pad.label, mode)
-                        if hit_pad.sound_key in kit:
-                            kit[hit_pad.sound_key].play()
                         detail = f"{hand_label}:{FINGER_LABELS.get(fid, fid)}:{hit_pad.sound_key}"
+                        frame_candidates.append((label, detail, hit_pad.sound_key))
 
+            if frame_candidates:
+                if args.allow_multi_hit:
+                    accepted_candidates = frame_candidates
+                elif elapsed - last_accepted_event_t >= args.global_event_cooldown:
+                    accepted_candidates = [frame_candidates[0]]
+                    suppressed_candidate_count += max(0, len(frame_candidates) - 1)
+                else:
+                    accepted_candidates = []
+                    suppressed_candidate_count += len(frame_candidates)
+
+                for label, detail, sound_key in accepted_candidates:
+                    if sound_key in kit:
+                        kit[sound_key].play()
                     event = Event(
                         event_id=len(events) + 1,
                         t_s=elapsed,
@@ -797,6 +817,7 @@ def run_live(args: argparse.Namespace) -> int:
                     )
                     events.append(event)
                     last_flash = (elapsed + 0.35, label)
+                    last_accepted_event_t = elapsed
 
             partial = match_events(cues[: max(0, current_idx)], events, pre_window_s=args.pre_window, post_window_s=args.post_window)
             tp_so_far = int(partial.summary.get("tp", 0))
@@ -851,6 +872,9 @@ def run_live(args: argparse.Namespace) -> int:
         "vy_trigger": args.vy_trigger,
         "joint_dps": args.joint_dps,
         "cooldown_s": args.cooldown,
+        "global_event_cooldown_s": args.global_event_cooldown,
+        "allow_multi_hit": args.allow_multi_hit,
+        "suppressed_candidate_count": suppressed_candidate_count,
         "mirror_view": not args.no_mirror,
         "note": "Latency is cue-to-detection latency, not independently verified acoustic motion-to-speaker latency.",
     }
@@ -878,11 +902,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
-    p.add_argument("--bpm", type=float, default=72.0, help="Cue tempo; lower is easier for human trials")
+    p.add_argument("--bpm", type=float, default=20.0, help="Cue tempo; lower is easier for human trials")
     p.add_argument("--repeats", type=int, default=3, help="Repeat the target list this many times")
-    p.add_argument("--lead-in", type=float, default=3.0, help="Seconds before first cue")
+    p.add_argument("--lead-in", type=float, default=7.0, help="Seconds before first cue")
     p.add_argument("--pre-window", type=float, default=0.20, help="Accept hits this many seconds before cue")
-    p.add_argument("--post-window", type=float, default=0.70, help="Accept hits this many seconds after cue")
+    p.add_argument("--post-window", type=float, default=1.50, help="Accept hits this many seconds after cue")
     p.add_argument("--finish-hold", type=float, default=2.0, help="Seconds to keep recording after the last window")
     p.add_argument("--targets", type=str, default="", help="Comma-separated target labels/notes")
     p.add_argument("--sequence-json", type=str, default="", help="Optional explicit sequence JSON")
@@ -896,9 +920,23 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--no-sound", action="store_true", help="Disable cue beep and instrument playback")
     p.add_argument("--no-record", action="store_true", help="Do not write review.mp4")
 
-    p.add_argument("--vy-trigger", type=float, default=0.025)
-    p.add_argument("--joint-dps", type=float, default=16.0)
-    p.add_argument("--cooldown", type=float, default=0.10)
+    p.add_argument("--vy-trigger", type=float, default=0.05)
+    p.add_argument("--joint-dps", type=float, default=35.0)
+    p.add_argument("--cooldown", type=float, default=0.80)
+    p.add_argument(
+        "--global-event-cooldown",
+        type=float,
+        default=1.20,
+        help=(
+            "Minimum seconds between accepted output events. This consolidates "
+            "multi-finger duplicate detections during single-cue evaluation."
+        ),
+    )
+    p.add_argument(
+        "--allow-multi-hit",
+        action="store_true",
+        help="Log/play every simultaneous finger hit instead of consolidating to one event.",
+    )
     p.add_argument("--max-hands", type=int, default=2, choices=(1, 2))
     p.add_argument("--model-complexity", type=int, default=0, choices=(0, 1))
     p.add_argument("--instruments", type=str, default="", help="Piano slot JSON; default instruments.piano.example.json")

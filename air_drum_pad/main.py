@@ -390,11 +390,11 @@ def main() -> int:
 
             side_by_mp.clear()
             for i, hl in enumerate(landmarks_list):
-                if i < len(handedness_list):
-                    lab = handedness_list[i].classification[0].label
-                    side_by_mp[i] = 0 if lab == "Left" else 1
-                else:
-                    side_by_mp[i] = 0 if hl.landmark[0].x < 0.5 else 1
+                # Use screen-side mapping instead of raw MediaPipe hand order.
+                # In the default mirrored/selfie view, this keeps piano notes
+                # intuitive: screen-left hand -> left-hand notes, screen-right
+                # hand -> right-hand notes.
+                side_by_mp[i] = 0 if hl.landmark[0].x < 0.5 else 1
 
             for hand_idx, hand_lms in enumerate(landmarks_list):
                 conf = 1.0
@@ -425,7 +425,8 @@ def main() -> int:
 
                     if args.piano:
                         assert det is not None
-                        hit = det.update_finger(hand_idx, fid, t, hand_lms, conf)
+                        mapped_hand_idx = side_by_mp.get(hand_idx, hand_idx)
+                        hit = det.update_finger(mapped_hand_idx, fid, t, hand_lms, conf)
                         if hit:
                             _, sk = hit
                             if sk in kit:
