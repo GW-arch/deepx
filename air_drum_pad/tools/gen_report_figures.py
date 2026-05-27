@@ -30,7 +30,9 @@ def _font(size: int, *, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFon
 def panda_icon() -> None:
     """Create a cute deterministic PANDA title-page icon."""
     scale = 2
-    width, height = 1600, 420
+    # Keep the title card wide enough that the subtitle stays comfortably
+    # inside the white rounded rectangle after DOCX/PDF scaling.
+    width, height = 1850, 420
     img = Image.new("RGBA", (width * scale, height * scale), (255, 250, 244, 255))
     draw = ImageDraw.Draw(img)
 
@@ -81,8 +83,8 @@ def panda_icon() -> None:
     )
     for x, y, r, color in [
         (114, 88, 16, (196, 181, 253, 90)),
-        (1440, 92, 26, (125, 211, 252, 85)),
-        (1370, 315, 18, (252, 165, 165, 80)),
+        (1680, 92, 26, (125, 211, 252, 85)),
+        (1610, 315, 18, (252, 165, 165, 80)),
         (94, 330, 22, (134, 239, 172, 80)),
     ]:
         draw.ellipse(box(x - r, y - r, x + r, y + r), fill=color)
@@ -123,12 +125,12 @@ def panda_icon() -> None:
     draw.text((s(532), s(248)), "Contactless drum and piano performance with hand-landmark strike detection", font=small_font, fill=(71, 85, 105, 255))
 
     # Small friendly NPU chip badge.
-    chip = box(1325, 64, 1488, 178)
+    chip = box(1565, 64, 1728, 178)
     draw.rounded_rectangle(chip, radius=s(22), fill=(236, 254, 255, 255), outline=(8, 145, 178, 255), width=s(4))
-    draw.text((s(1364), s(100)), "NPU", font=_font(s(32), bold=True), fill=(8, 145, 178, 255))
+    draw.text((s(1604), s(100)), "NPU", font=_font(s(32), bold=True), fill=(8, 145, 178, 255))
     for y in [87, 113, 139, 165]:
-        draw.line([s(1305), s(y), s(1325), s(y)], fill=(8, 145, 178, 255), width=s(4))
-        draw.line([s(1488), s(y), s(1508), s(y)], fill=(8, 145, 178, 255), width=s(4))
+        draw.line([s(1545), s(y), s(1565), s(y)], fill=(8, 145, 178, 255), width=s(4))
+        draw.line([s(1728), s(y), s(1748), s(y)], fill=(8, 145, 178, 255), width=s(4))
 
     resample = getattr(getattr(Image, "Resampling", Image), "LANCZOS")
     img = img.resize((width, height), resample)
