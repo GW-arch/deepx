@@ -75,6 +75,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model-complexity", type=int, default=0, choices=[0, 1])
     p.add_argument("--trail", type=int, default=24, help="손끝 궤적 길이(프레임)")
     p.add_argument(
+        "--no-mirror",
+        action="store_true",
+        help="좌우 반전(selfie/거울) 화면을 끕니다. 기본은 움직임이 직관적이도록 mirror view입니다.",
+    )
+    p.add_argument(
         "--instruments",
         type=str,
         default="",
@@ -372,6 +377,8 @@ def main() -> int:
                 print("Camera read failed", file=sys.stderr)
                 return 1
             fail_streak = 0
+            if not args.no_mirror:
+                frame = cv2.flip(frame, 1)
 
             frames += 1
             t = time.perf_counter()

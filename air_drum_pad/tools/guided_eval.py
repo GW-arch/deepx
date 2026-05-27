@@ -726,6 +726,8 @@ def run_live(args: argparse.Namespace) -> int:
             frame_id += 1
             if frame.shape[1] != args.width or frame.shape[0] != args.height:
                 frame = cv2.resize(frame, (args.width, args.height), interpolation=cv2.INTER_LINEAR)
+            if not args.no_mirror:
+                frame = cv2.flip(frame, 1)
 
             now = time.perf_counter()
             elapsed = now - start_t
@@ -849,6 +851,7 @@ def run_live(args: argparse.Namespace) -> int:
         "vy_trigger": args.vy_trigger,
         "joint_dps": args.joint_dps,
         "cooldown_s": args.cooldown,
+        "mirror_view": not args.no_mirror,
         "note": "Latency is cue-to-detection latency, not independently verified acoustic motion-to-speaker latency.",
     }
     write_outputs(
@@ -885,6 +888,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--sequence-json", type=str, default="", help="Optional explicit sequence JSON")
     p.add_argument("--output-dir", type=str, default="", help="Default: eval_runs/YYYYmmdd_HHMMSS_mode")
     p.add_argument("--fullscreen", action="store_true")
+    p.add_argument(
+        "--no-mirror",
+        action="store_true",
+        help="Disable the default mirrored selfie view.",
+    )
     p.add_argument("--no-sound", action="store_true", help="Disable cue beep and instrument playback")
     p.add_argument("--no-record", action="store_true", help="Do not write review.mp4")
 
