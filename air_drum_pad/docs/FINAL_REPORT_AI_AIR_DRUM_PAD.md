@@ -92,11 +92,11 @@ A custom JSON piano layout example is also generated using the same default slot
 
 ### 2.2 Live Interface Screenshots
 
-Live screenshots were captured from the guided evaluator after the mirror-view update. The drum screenshot shows rectangular pad targeting on the mirrored camera feed; the piano screenshot shows screen-side hand mapping with the current note and suggested finger.
+Live screenshots were captured from the normal, non-guided runtime after the mirror-view update. The drum screenshot shows the pad-based performance interface with a mirrored camera feed, fingertip landmarks, and the mapping sidebar. The piano screenshot shows the live hand-to-note interface with recent strike events listed in the sidebar.
 
-![Figure 6. Live guided drum evaluation screenshot captured from the mirrored interface.](figures/guided_eval_drum_live.png)
+![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored interface.](figures/live_drum_interface.png)
 
-![Figure 7. Live guided piano evaluation screenshot captured from the mirrored interface.](figures/guided_eval_piano_live.png)
+![Figure 7. Non-guided piano runtime screenshot captured from the mirrored interface.](figures/live_piano_interface.png)
 
 ---
 
@@ -304,12 +304,18 @@ The unit tests cover default piano mapping, synthetic audio duration, pad-zone g
 
 A guided live evaluation was run on May 27, 2026 using the mirrored camera interface, CPU MediaPipe backend, strict strike thresholds, and global event consolidation to reduce duplicate multi-finger hits. The sequence was intentionally slow so that the performer could read the on-screen target before moving: 15 BPM, one pass through each target list, 7 s lead-in, and a 2.0 s post-cue matching window. The evaluator records one accepted output event per 1.2 s global cooldown interval and suppresses extra simultaneous candidates from the same physical motion.
 
+Figures 10 and 11 show the guided evaluator UI used for this measurement. Unlike the normal runtime screenshots in Section 2.2, these screens include the current cue, readiness countdown, cue index, target hint, and the accepted matching window.
+
+![Figure 10. Guided drum evaluation screenshot showing the current pad cue and mirrored pad overlay.](figures/guided_eval_drum_live.png)
+
+![Figure 11. Guided piano evaluation screenshot showing the current note cue and suggested finger.](figures/guided_eval_piano_live.png)
+
 | Mode | Cues | TP | FP | FN | Precision | Recall / target accuracy | Mean cue-to-detection latency |
 |------|-----:|---:|---:|---:|----------:|-------------------------:|------------------------------:|
 | Drum pads | 8 | 7 | 9 | 1 | 43.8% | 87.5% | 660 ms |
 | Piano | 10 | 2 | 13 | 8 | 13.3% | 20.0% | 1034 ms |
 
-![Figure 10. Guided evaluation plot generated from the slow mirrored drum and piano runs.](figures/guided_eval_results.png)
+![Figure 12. Guided evaluation plot generated from the slow mirrored drum and piano runs.](figures/guided_eval_results.png)
 
 The drum-pad interface performed substantially better than the piano interface in this pilot run. This is expected because drum mode only requires the fingertip strike to land inside a visible rectangle, while piano mode requires both accurate finger identity and stable screen-side hand mapping. The piano result therefore highlights a remaining usability issue rather than a failure of palm detection: the system is detecting fingertip strikes, but many detected notes do not match the prompted note. The cue-to-detection latency values include human reaction time and should not be interpreted as acoustic motion-to-speaker latency.
 
