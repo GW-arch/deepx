@@ -468,7 +468,6 @@ def export(md_name: str) -> None:
 
 def main() -> None:
     export("FINAL_REPORT_AI_AIR_DRUM_PAD.md")
-    export("FINAL_REPORT_AI_AIR_DRUM_PAD_KO.md")
 
 
 if __name__ == "__main__":

@@ -12,13 +12,13 @@
 
 **Date:** 2026-05-27
 
-**Source availability:** Private implementation artifact; the GitHub repository and source code are not publicly released.
+**Code availability:** Not publicly released.
 
 ---
 
 ## Abstract
 
-This report presents **PANDA**, short for **<u>P</u>**ose-**<u>A</u>**ware **<u>N</u>**PU **<u>D</u>**igital **<u>A</u>**udio Interface, the final titled version of **AI Air-Drum Pad**, a real-time camera-based musical interface that converts hand and finger motions into playable drum and piano events. The system tracks hand landmarks from a USB camera, estimates downward fingertip velocity and finger-joint angular velocity, and triggers audio only when both motion cues indicate an intentional strike. Two musical modes are implemented on the same perception-and-strike-detection core: (1) a **drum pad mode**, where any fingertip may strike an on-screen rectangular pad, and (2) a **piano mode**, where notes are mapped to hand and finger identity. The final piano default layout maps the left hand from thumb to pinky as `G4, F4, E4, D4, C4` and the right hand as `C5, D5, E5, F5, G5`. The implementation supports CPU MediaPipe, CPU TFLite baseline, hybrid CPU+NPU hand-landmark inference, and a low-latency NPU dual-halves mode. Evaluation utilities and unit tests validate strike detection, pad-zone parsing, piano-note mapping, ROI transforms, and benchmark helpers. Prototype measurements show that the low-latency NPU dual-halves backend can approach the 60 FPS frame budget, while the more accurate palm-detection pipeline is limited by CPU palm detection. The project demonstrates a practical path toward low-cost, contactless musical instruments on edge AI hardware, with clear remaining work in end-to-end audio-latency measurement, robust hit-accuracy evaluation, and user studies.
+This report presents **PANDA**, short for **<u>P</u>**ose-**<u>A</u>**ware **<u>N</u>**PU **<u>D</u>**igital **<u>A</u>**udio Interface, a real-time camera-based musical interface that converts hand and finger motions into playable drum and piano events. The system tracks hand landmarks from a USB camera, estimates downward fingertip velocity and finger-joint angular velocity, and triggers audio only when both motion cues indicate an intentional strike. Two musical modes are implemented on the same perception-and-strike-detection core: (1) a **drum pad mode**, where any fingertip may strike an on-screen rectangular pad, and (2) a **piano mode**, where notes are mapped to hand and finger identity. The final piano default layout maps the left hand from thumb to pinky as `G4, F4, E4, D4, C4` and the right hand as `C5, D5, E5, F5, G5`. The implementation supports CPU MediaPipe, CPU TFLite baseline, hybrid CPU+NPU hand-landmark inference, and a low-latency NPU dual-halves mode. Evaluation utilities and unit tests validate strike detection, pad-zone parsing, piano-note mapping, ROI transforms, and benchmark helpers. Prototype measurements show that the low-latency NPU dual-halves backend can approach the 60 FPS frame budget, while the more accurate palm-detection pipeline is limited by CPU palm detection. The project demonstrates a practical path toward low-cost, contactless musical instruments on edge AI hardware, with clear remaining work in end-to-end audio-latency measurement, robust hit-accuracy evaluation, and user studies.
 
 **Keywords:** PANDA, contactless musical interface, hand tracking, gesture recognition, air drums, virtual piano, edge AI, NPU, real-time interaction
 
@@ -45,7 +45,7 @@ The implemented project contributes:
 - A piano interface with a corrected default mapping: left thumb `G4`, left pinky `C4`, right hand `C5–G5`.
 - Generated interface diagrams for both modes.
 - Report figures generated programmatically for system architecture, strike logic, and backend latency.
-- A repeatable private validation pipeline covering mapping, detector behavior, pad validation, ROI helpers, and benchmark helpers.
+- A repeatable validation pipeline covering mapping, detector behavior, pad validation, ROI helpers, and benchmark helpers.
 
 ---
 
@@ -186,7 +186,7 @@ The final default tuple is:
 ("G4", "F4", "E4", "D4", "C4", "C5", "D5", "E5", "F5", "G5")
 ```
 
-This mapping is implemented as the default runtime note configuration and is also mirrored in the private example configuration used for custom piano layouts.
+This mapping is implemented as the default runtime note configuration and is mirrored in the custom piano-layout configuration used to generate the example figure.
 
 ### 4.5 Audio Generation
 
@@ -196,20 +196,7 @@ The system pre-renders synthetic drum and piano sounds into `pygame.mixer.Sound`
 
 ## 5. Implementation
 
-### 5.1 Private Implementation Modules
-
-The source repository is not publicly released. For reproducibility of the academic description, the implementation is summarized by functional module rather than by public source path.
-
-| Private module | Role |
-|----------------|------|
-| Runtime controller | Camera loop, backend selection, mode selection, drawing, sidebar UI, sound triggering |
-| Hand-tracking layer | CPU MediaPipe, CPU-baseline TFLite, NPU, and NPU-full tracker abstractions |
-| Strike-detection layer | Finger strike detector, pad strike detector, pad layout validation |
-| Audio layer | Synthetic drum samples, piano note synthesis, default piano slots |
-| Figure-generation utilities | Drum/piano mapping images and report diagrams |
-| Validation suite | Unit tests for strike detection, mapping, ROI helpers, and benchmark helpers |
-
-### 5.2 Runtime Backends
+### 5.1 Runtime Backends
 
 The application supports four major backend configurations.
 
@@ -222,11 +209,11 @@ The application supports four major backend configurations.
 
 The NPU-full path is architecturally preferred for accurate hand localization, but CPU palm detection dominates latency. The dual-halves NPU mode is faster because it removes palm detection, but it is a geometric approximation and should be evaluated under the target camera setup.
 
-### 5.3 User Interface
+### 5.2 User Interface
 
 The runtime display contains the camera feed, hand/finger landmark trails, mode-specific overlays, and a sidebar. In drum mode, rectangles are drawn directly on the camera feed and flash briefly when hit. In piano mode, the sidebar shows the hand-to-note mapping and recent note events.
 
-The generated diagrams are used both as report figures and as sidebar assets, keeping the report and runtime UI consistent without requiring public source-code distribution.
+The generated diagrams are used both as report figures and as sidebar assets, keeping the report and runtime UI consistent.
 
 ---
 
@@ -234,13 +221,7 @@ The generated diagrams are used both as report figures and as sidebar assets, ke
 
 ### 6.1 Software Validation
 
-The current quality gate is:
-
-```bash
-RUN_BENCH_SMOKE=0 ./scripts/check_quality.sh
-```
-
-This performs Python syntax checks, unit tests, and palm decode tests. The benchmark smoke test is skipped when model files or hardware-specific dependencies are unavailable.
+The validation suite performs Python syntax checks, unit tests, and palm decode tests. Hardware-dependent benchmark smoke tests are separated from the default quality gate so that the report can distinguish portable software validation from board-specific performance evaluation.
 
 ### 6.2 Backend Latency Measurement
 
@@ -282,7 +263,7 @@ A complete academic evaluation still requires manual measurements of the physica
 
 1. **End-to-end audio latency:** record the performer's hand and the speaker output simultaneously using a high-speed camera or synchronized audio/video setup. For each strike, identify the video frame where the downward hit begins and the first audio waveform onset at the speaker. Compute `Delta t = t_audio - t_video`. Use at least 30 strikes per mode and report mean, standard deviation, and P95 latency.
 2. **Hit accuracy:** run metronome-guided trials in both drum and piano modes. A true positive is an intended strike detected within the allowed time window. A false negative is an intended strike with no valid event. A false positive is an unintended or duplicate event outside the allowed window. Report TP, FP, FN, precision, recall, and qualitative failure cases.
-3. **Per-run logging:** retain the git commit, backend, camera resolution, model paths/checksums, `vy_trigger`, `joint_dps`, `cooldown`, lighting conditions, and raw event log fields such as `t`, `frame_id`, `infer_ms`, `hand_id`, `finger_id`, `pad/note`, and `trigger`.
+3. **Per-run logging:** retain the internal build identifier, backend, camera resolution, model checksums, `vy_trigger`, `joint_dps`, `cooldown`, lighting conditions, and raw event log fields such as `t`, `frame_id`, `infer_ms`, `hand_id`, `finger_id`, `pad/note`, and `trigger`.
 
 The following figures are still placeholders because they require live hardware capture.
 
@@ -314,7 +295,7 @@ The latest validation run produced:
 | Python syntax check | Passed |
 | Unit tests | 28/28 passed |
 | Palm decode tests | 15/15 passed |
-| Dataset benchmark smoke | Skipped intentionally with `RUN_BENCH_SMOKE=0` |
+| Dataset benchmark smoke | Skipped intentionally in the portable validation run |
 
 The unit tests cover default piano mapping, synthetic audio duration, pad-zone generation, pad JSON validation, instrument slot validation, strike detector thresholds, middle-finger sensitivity, cooldown behavior, ROI helpers, benchmark helper functions, and dataset capture indexing.
 
@@ -425,37 +406,7 @@ FILLME: course, advisor, lab, hardware provider, or collaborator acknowledgments
 
 ## References
 
-[1] PANDA / AI Air-Drum Pad private project artifact: implementation, validation outputs, generated figures, instrument images, and recorded benchmark artifacts retained privately by the project authors and summarized in this self-contained report.
-[2] MediaPipe Hands / hand landmark model family, used through CPU MediaPipe and TFLite-derived pipeline paths.
-[3] OpenCV, used for camera capture, drawing, and display.
-[4] pygame, used for low-latency playback of pre-rendered PCM sound buffers.
-[5] DeepX DX-RT / DX-COM toolchain, used for `.dxnn` NPU hand-landmark inference experiments.
-
----
-
-## Appendix A. Artifact Availability and Private Validation Workflow
-
-The GitHub repository and source code are not publicly released. The report is therefore written as a self-contained technical description: all system design, mode mappings, strike-detection equations, backend definitions, benchmark settings, and measured values needed for review are included in the main text.
-
-The private implementation was validated using the following internal workflow:
-
-1. Regenerate the interface diagrams and report figures from the private artifact.
-2. Export the English and Korean reports to Markdown, DOCX, and PDF.
-3. Run Python syntax checks, unit tests, and palm-decode tests.
-4. Verify DOCX package integrity and PDF generation.
-5. Record the exact private build revision used for submission.
-
-No public GitHub URL, source archive, or source-code listing is required for reading this report. If an evaluator requires code access, it should be provided separately through the course's private submission channel.
-
----
-
-## Appendix B. Private Artifact Summary
-
-| Artifact category | Description |
-|-------------------|-------------|
-| Runtime application | Private camera-to-audio application for drum and piano modes |
-| Tracking backends | CPU MediaPipe, CPU TFLite baseline, hybrid CPU+NPU, and NPU dual-halves paths |
-| Strike-detection logic | Fingertip velocity, joint angular velocity, confidence filtering, and cooldown handling |
-| Configuration examples | Private drum-pad and piano-note layout examples used to generate the figures |
-| Generated figures | Report diagrams, instrument layout images, and the PANDA icon included in this report |
-| Validation outputs | Syntax checks, unit tests, palm-decode tests, DOCX integrity checks, and PDF export checks |
+[1] MediaPipe Hands / hand landmark model family, used through CPU MediaPipe and TFLite-derived pipeline paths.
+[2] OpenCV, used for camera capture, drawing, and display.
+[3] pygame, used for low-latency playback of pre-rendered PCM sound buffers.
+[4] DeepX DX-RT / DX-COM toolchain, used for `.dxnn` NPU hand-landmark inference experiments.
