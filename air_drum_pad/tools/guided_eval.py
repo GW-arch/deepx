@@ -51,6 +51,13 @@ PIANO_DEFAULT_TARGETS: tuple[str, ...] = (
     "G5",
 )
 FINGER_HINTS: tuple[str, ...] = ("thumb", "index", "middle", "ring", "pinky")
+MIRRORED_FINGER_ID: dict[int, int] = {
+    4: 20,
+    8: 16,
+    12: 12,
+    16: 8,
+    20: 4,
+}
 
 
 @dataclass(frozen=True)
@@ -146,6 +153,89 @@ def build_cues(
             cues.append(Cue(cue_id=i + 1, t_s=lead_in_s + i * period_s, target=target))
             i += 1
     return cues
+
+
+def build_block_cues(
+    targets: Sequence[str],
+    *,
+    bpm: float,
+    repeats: int,
+    lead_in_s: float,
+    beats_per_target: int,
+    block_ready_s: float,
+) -> list[Cue]:
+    """Build fixed-target blocks for repeated strikes.
+
+    Unlike ``build_cues``, this schedule gives the performer a ready interval
+    before each target and then repeats that same target for several beats.  The
+    first few beats of each block can be excluded from scoring so the measured
+    cue-to-detection latency is less dominated by reading/reaction time.
+    """
+    if bpm <= 0:
+        raise ValueError("bpm must be positive")
+    if repeats <= 0:
+        raise ValueError("repeats must be positive")
+    if lead_in_s < 0:
+        raise ValueError("lead_in_s must be non-negative")
+    if beats_per_target <= 0:
+        raise ValueError("beats_per_target must be positive")
+    if block_ready_s < 0:
+        raise ValueError("block_ready_s must be non-negative")
+    clean_targets = [str(x).strip() for x in targets if str(x).strip()]
+    if not clean_targets:
+        raise ValueError("at least one target is required")
+
+    period_s = 60.0 / bpm
+    cues: list[Cue] = []
+    cue_id = 1
+    t_s = lead_in_s
+    for _repeat in range(repeats):
+        for target in clean_targets:
+            t_s += block_ready_s
+            for _beat in range(beats_per_target):
+                cues.append(Cue(cue_id=cue_id, t_s=t_s, target=target))
+                cue_id += 1
+                t_s += period_s
+    return cues
+
+
+def scored_cues_for_protocol(
+    cues: Sequence[Cue],
+    *,
+    protocol: str,
+    beats_per_target: int,
+    warmup_beats: int,
+) -> list[Cue]:
+    """Return cues that should contribute to accuracy/latency metrics."""
+    if protocol == "sequence":
+        return list(cues)
+    if protocol != "blocks":
+        raise ValueError(f"unsupported protocol: {protocol!r}")
+    if beats_per_target <= 0:
+        raise ValueError("beats_per_target must be positive")
+    if warmup_beats < 0:
+        raise ValueError("warmup_beats must be non-negative")
+    if warmup_beats >= beats_per_target:
+        raise ValueError("warmup_beats must be smaller than beats_per_target")
+    return [
+        cue
+        for idx, cue in enumerate(cues)
+        if (idx % beats_per_target) >= warmup_beats
+    ]
+
+
+def physical_side_from_screen_x(nx: float, *, mirror: bool) -> int:
+    """Return 0 for performer's left and 1 for performer's right."""
+    if mirror:
+        return 0 if nx < 0.5 else 1
+    return 0 if nx >= 0.5 else 1
+
+
+def piano_finger_id_for_mapping(fid: int, *, mirror_finger_order: bool) -> int:
+    """Return physical piano finger id after mirrored-view finger remapping."""
+    if not mirror_finger_order:
+        return fid
+    return MIRRORED_FINGER_ID.get(fid, fid)
 
 
 def load_cues_json(path: str, mode: str) -> list[Cue]:
@@ -398,7 +488,9 @@ def write_outputs(
         "",
         f"- Mode: `{metadata.get('mode', 'unknown')}`",
         f"- Backend: `{metadata.get('backend', 'unknown')}`",
-        f"- Cues: {summary.get('cue_count', 0)}",
+        f"- Protocol: `{metadata.get('protocol', 'sequence')}`",
+        f"- Scheduled cues: {metadata.get('scheduled_cue_count', summary.get('cue_count', 0))}",
+        f"- Scored cues: {summary.get('cue_count', 0)}",
         f"- Detected events: {summary.get('event_count', 0)}",
         f"- True positives: {summary.get('tp', 0)}",
         f"- False positives: {summary.get('fp', 0)}",
@@ -568,6 +660,21 @@ def _draw_landmarks(cv2: Any, np: Any, frame: Any, hand_lms: Any, color: tuple[i
         cv2.line(frame, pts[a], pts[b], color, 1, cv2.LINE_AA)
 
 
+def _hand_label_origin(frame: Any, hand_lms: Any, *, reserved_top_px: int = 0) -> tuple[int, int]:
+    """Place H0:L/H1:R near the whole hand bounding box, away from the HUD."""
+    h, w = frame.shape[:2]
+    xs = [int(lm.x * w) for lm in hand_lms.landmark]
+    ys = [int(lm.y * h) for lm in hand_lms.landmark]
+    x_min, _x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    x = max(8, min(w - 100, x_min))
+    y = y_min - 10
+    if y < reserved_top_px + 20:
+        y = y_max + 22
+    y = max(24, min(h - 8, y))
+    return x, y
+
+
 def _piano_targets_from_slots(slots: Sequence[str]) -> tuple[str, ...]:
     try:
         from drumkit_audio import note_name_to_midi
@@ -610,7 +717,13 @@ def run_live(args: argparse.Namespace) -> int:
     if mode == "piano":
         piano_json = args.instruments.strip() if args.instruments.strip() else "instruments.piano.example.json"
         slots = load_piano_slots_json(piano_json) if Path(piano_json).is_file() else PIANO_DEFAULT_SLOTS
-        target_default = _piano_targets_from_slots(slots)
+        all_piano_targets = _piano_targets_from_slots(slots)
+        if args.piano_hand == "left":
+            target_default = all_piano_targets[:5]
+        elif args.piano_hand == "right":
+            target_default = all_piano_targets[5:10]
+        else:
+            target_default = all_piano_targets
         hints = piano_target_hints(slots)
     else:
         if args.drum_pads.strip():
@@ -623,11 +736,37 @@ def run_live(args: argparse.Namespace) -> int:
         target_default = tuple(p.label for p in pad_zones)
         hints = {}
 
+    protocol = args.protocol
     if args.sequence_json.strip():
         cues = load_cues_json(args.sequence_json.strip(), mode)
+        protocol = "sequence"
     else:
         targets = parse_targets(args.targets, mode) if args.targets else target_default
-        cues = build_cues(targets, bpm=args.bpm, repeats=args.repeats, lead_in_s=args.lead_in)
+        if protocol == "blocks":
+            cues = build_block_cues(
+                targets,
+                bpm=args.bpm,
+                repeats=args.repeats,
+                lead_in_s=args.lead_in,
+                beats_per_target=args.beats_per_target,
+                block_ready_s=args.block_ready,
+            )
+        else:
+            cues = build_cues(targets, bpm=args.bpm, repeats=args.repeats, lead_in_s=args.lead_in)
+    scored_cues = scored_cues_for_protocol(
+        cues,
+        protocol=protocol,
+        beats_per_target=args.beats_per_target,
+        warmup_beats=args.warmup_beats,
+    )
+    effective_max_hands = (
+        1 if mode == "piano" and args.piano_hand != "both" else args.max_hands
+    )
+    mirror_finger_order = (
+        mode == "piano"
+        and not args.no_mirror
+        and not args.no_flip_finger_order
+    )
 
     output_dir = Path(args.output_dir) if args.output_dir.strip() else Path("eval_runs") / datetime.now().strftime(f"%Y%m%d_%H%M%S_{mode}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -654,14 +793,17 @@ def run_live(args: argparse.Namespace) -> int:
             cue_sound = None
 
     if mode == "piano":
-        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
-            h, lm, max_hands=mh, sound_slots=s
+        sound_mapper = lambda h, lm, s=slots, mfo=mirror_finger_order: sound_key_for_finger(
+            h,
+            piano_finger_id_for_mapping(lm, mirror_finger_order=mfo),
+            max_hands=2,
+            sound_slots=s,
         )
         det: InstrumentStrikeDetector | None = InstrumentStrikeDetector(
             vy_trigger=args.vy_trigger,
             joint_dps_trigger=args.joint_dps,
             cooldown_s=args.cooldown,
-            max_hands=args.max_hands,
+            max_hands=2,
             sound_mapper=sound_mapper,
         )
         pad_det: PadStrikeDetector | None = None
@@ -683,7 +825,7 @@ def run_live(args: argparse.Namespace) -> int:
 
     tracker = create_tracker(
         args.backend,
-        max_hands=args.max_hands,
+        max_hands=effective_max_hands,
         model_complexity=args.model_complexity,
         dxnn_path=args.dxnn,
         dxnn_layout=args.dxnn_layout if args.dxnn_layout.strip() else None,
@@ -699,6 +841,8 @@ def run_live(args: argparse.Namespace) -> int:
     cv2.namedWindow(title, cv2.WINDOW_NORMAL)
     if args.fullscreen:
         cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.resizeWindow(title, args.display_width, args.display_height)
 
     writer: Any | None = None
     if not args.no_record:
@@ -712,9 +856,13 @@ def run_live(args: argparse.Namespace) -> int:
     last_flash: tuple[float, str] | None = None
     last_accepted_event_t = -1.0e9
     suppressed_candidate_count = 0
+    screenshot_saved = False
 
     print(
-        f"[guided-eval] mode={mode} backend={args.backend} cues={len(cues)} output={output_dir}",
+        (
+            f"[guided-eval] mode={mode} backend={args.backend} protocol={protocol} "
+            f"scheduled_cues={len(cues)} scored_cues={len(scored_cues)} output={output_dir}"
+        ),
         flush=True,
     )
     print("[guided-eval] q=quit early; results are still written", flush=True)
@@ -748,25 +896,30 @@ def run_live(args: argparse.Namespace) -> int:
             res = tracker.process(rgb)
             landmarks_list = res.multi_hand_landmarks or []
             handedness_list = res.multi_handedness or []
-            screen_side_by_hand = {
-                i: (0 if hand_lms.landmark[0].x < 0.5 else 1)
-                for i, hand_lms in enumerate(landmarks_list)
-            }
+            if mode == "piano" and args.piano_hand != "both":
+                forced_side = 0 if args.piano_hand == "left" else 1
+                physical_side_by_hand = {
+                    i: forced_side for i, _hand_lms in enumerate(landmarks_list)
+                }
+            else:
+                physical_side_by_hand = {
+                    i: physical_side_from_screen_x(hand_lms.landmark[0].x, mirror=not args.no_mirror)
+                    for i, hand_lms in enumerate(landmarks_list)
+                }
             frame_candidates: list[tuple[str, str, str]] = []
 
             for hand_idx, hand_lms in enumerate(landmarks_list):
                 conf = 1.0
-                hand_label = f"H{hand_idx}"
+                side_idx = physical_side_by_hand.get(hand_idx, hand_idx)
+                hand_label = f"H{hand_idx}:{'L' if side_idx == 0 else 'R'}"
                 if hand_idx < len(handedness_list):
                     cls = handedness_list[hand_idx].classification[0]
                     conf = float(cls.score)
-                    hand_label = f"{cls.label[0].upper()}{hand_idx}"
                 _draw_landmarks(cv2, np, frame, hand_lms, (0, 255, 255))
-                wrist = hand_lms.landmark[0]
                 cv2.putText(
                     frame,
                     hand_label,
-                    (int(wrist.x * frame.shape[1]), int(wrist.y * frame.shape[0]) - 8),
+                    _hand_label_origin(frame, hand_lms, reserved_top_px=155),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.5,
                     (255, 255, 0),
@@ -777,14 +930,18 @@ def run_live(args: argparse.Namespace) -> int:
                 for fid in FINGERTIP_INDICES:
                     if mode == "piano":
                         assert det is not None
-                        mapped_hand_idx = screen_side_by_hand.get(hand_idx, hand_idx)
+                        mapped_hand_idx = physical_side_by_hand.get(hand_idx, hand_idx)
                         hit = det.update_finger(mapped_hand_idx, fid, elapsed, hand_lms, conf)
                         if not hit:
                             continue
                         _track_id, label = hit
                         label = normalize_label(label, mode)
                         side_label = "L" if mapped_hand_idx == 0 else "R"
-                        detail = f"{side_label}{hand_idx}:{FINGER_LABELS.get(fid, fid)}"
+                        mapped_fid = piano_finger_id_for_mapping(
+                            fid,
+                            mirror_finger_order=mirror_finger_order,
+                        )
+                        detail = f"{side_label}{hand_idx}:{FINGER_LABELS.get(mapped_fid, mapped_fid)}"
                         frame_candidates.append((label, detail, label))
                     else:
                         assert pad_det is not None
@@ -819,7 +976,15 @@ def run_live(args: argparse.Namespace) -> int:
                     last_flash = (elapsed + 0.35, label)
                     last_accepted_event_t = elapsed
 
-            partial = match_events(cues[: max(0, current_idx)], events, pre_window_s=args.pre_window, post_window_s=args.post_window)
+            completed_scored_cues = [
+                cue for cue in scored_cues if elapsed > cue.t_s + args.post_window
+            ]
+            partial = match_events(
+                completed_scored_cues,
+                events,
+                pre_window_s=args.pre_window,
+                post_window_s=args.post_window,
+            )
             tp_so_far = int(partial.summary.get("tp", 0))
             fp_so_far = int(partial.summary.get("fp", 0))
 
@@ -843,8 +1008,29 @@ def run_live(args: argparse.Namespace) -> int:
 
             if writer is not None:
                 writer.write(frame)
-            cv2.imshow(title, frame)
+            display_frame = frame
+            if not args.fullscreen and (
+                args.display_width != frame.shape[1] or args.display_height != frame.shape[0]
+            ):
+                display_frame = cv2.resize(
+                    frame,
+                    (args.display_width, args.display_height),
+                    interpolation=cv2.INTER_LINEAR,
+                )
+            if (
+                args.screenshot_out.strip()
+                and not screenshot_saved
+                and elapsed >= max(0.0, args.screenshot_delay)
+            ):
+                out_path = Path(args.screenshot_out)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(out_path), display_frame)
+                screenshot_saved = True
+                print(f"[guided-eval] saved screenshot: {out_path}", flush=True)
+            cv2.imshow(title, display_frame)
             if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+            if args.auto_quit_after > 0 and elapsed >= args.auto_quit_after:
                 break
             if elapsed > cues[-1].t_s + args.post_window + args.finish_hold:
                 break
@@ -857,18 +1043,30 @@ def run_live(args: argparse.Namespace) -> int:
         if pygame is not None:
             pygame.quit()
 
-    result = match_events(cues, events, pre_window_s=args.pre_window, post_window_s=args.post_window)
+    result = match_events(scored_cues, events, pre_window_s=args.pre_window, post_window_s=args.post_window)
     metadata = {
         "mode": mode,
         "backend": args.backend,
+        "architecture": "final npu-full" if args.backend == "npu-full" else args.backend,
+        "protocol": protocol,
+        "piano_hand": args.piano_hand if mode == "piano" else None,
         "created_at": datetime.now().isoformat(timespec="seconds"),
         "bpm": args.bpm,
         "repeats": args.repeats,
         "lead_in_s": args.lead_in,
+        "block_ready_s": args.block_ready if protocol == "blocks" else 0.0,
+        "beats_per_target": args.beats_per_target if protocol == "blocks" else None,
+        "warmup_beats": args.warmup_beats if protocol == "blocks" else 0,
+        "scheduled_cue_count": len(cues),
+        "scored_cue_count": len(scored_cues),
+        "scored_cue_ids": [cue.cue_id for cue in scored_cues],
         "targets": [c.target for c in cues],
         "camera": args.camera,
         "width": args.width,
         "height": args.height,
+        "max_hands_requested": args.max_hands,
+        "max_hands_effective": effective_max_hands,
+        "mirror_finger_order": mirror_finger_order,
         "vy_trigger": args.vy_trigger,
         "joint_dps": args.joint_dps,
         "cooldown_s": args.cooldown,
@@ -902,16 +1100,38 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--camera", type=int, default=0)
     p.add_argument("--width", type=int, default=640)
     p.add_argument("--height", type=int, default=480)
-    p.add_argument("--bpm", type=float, default=20.0, help="Cue tempo; lower is easier for human trials")
-    p.add_argument("--repeats", type=int, default=3, help="Repeat the target list this many times")
-    p.add_argument("--lead-in", type=float, default=7.0, help="Seconds before first cue")
+    p.add_argument("--display-width", type=int, default=960, help="Window/display width for the guided UI")
+    p.add_argument("--display-height", type=int, default=720, help="Window/display height for the guided UI")
+    p.add_argument(
+        "--protocol",
+        choices=("blocks", "sequence"),
+        default="blocks",
+        help=(
+            "blocks=ready time then repeated beats for one target; "
+            "sequence=single pass through the target list"
+        ),
+    )
+    p.add_argument(
+        "--bpm",
+        type=float,
+        default=45.0,
+        help="Cue tempo for the strike beats; 45 BPM gives repeated but readable cues",
+    )
+    p.add_argument("--repeats", type=int, default=1, help="Repeat the target list this many times")
+    p.add_argument("--lead-in", type=float, default=5.0, help="Seconds before first target block")
+    p.add_argument("--beats-per-target", type=int, default=8, help="Number of repeated beats per fixed target block")
+    p.add_argument("--warmup-beats", type=int, default=2, help="Unscored beats at the start of each fixed-target block")
+    p.add_argument("--block-ready", type=float, default=6.0, help="Ready/countdown seconds before each fixed-target block")
     p.add_argument("--pre-window", type=float, default=0.20, help="Accept hits this many seconds before cue")
-    p.add_argument("--post-window", type=float, default=1.50, help="Accept hits this many seconds after cue")
+    p.add_argument("--post-window", type=float, default=0.90, help="Accept hits this many seconds after cue")
     p.add_argument("--finish-hold", type=float, default=2.0, help="Seconds to keep recording after the last window")
     p.add_argument("--targets", type=str, default="", help="Comma-separated target labels/notes")
     p.add_argument("--sequence-json", type=str, default="", help="Optional explicit sequence JSON")
     p.add_argument("--output-dir", type=str, default="", help="Default: eval_runs/YYYYmmdd_HHMMSS_mode")
     p.add_argument("--fullscreen", action="store_true")
+    p.add_argument("--screenshot-out", type=str, default="", help="Save a live overlay screenshot during the run")
+    p.add_argument("--screenshot-delay", type=float, default=5.0, help="Seconds after start before saving --screenshot-out")
+    p.add_argument("--auto-quit-after", type=float, default=0.0, help="Optional automatic quit time in seconds")
     p.add_argument(
         "--no-mirror",
         action="store_true",
@@ -922,11 +1142,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 
     p.add_argument("--vy-trigger", type=float, default=0.05)
     p.add_argument("--joint-dps", type=float, default=35.0)
-    p.add_argument("--cooldown", type=float, default=0.80)
+    p.add_argument("--cooldown", type=float, default=0.35)
     p.add_argument(
         "--global-event-cooldown",
         type=float,
-        default=1.20,
+        default=0.35,
         help=(
             "Minimum seconds between accepted output events. This consolidates "
             "multi-finger duplicate detections during single-cue evaluation."
@@ -940,6 +1160,17 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--max-hands", type=int, default=2, choices=(1, 2))
     p.add_argument("--model-complexity", type=int, default=0, choices=(0, 1))
     p.add_argument("--instruments", type=str, default="", help="Piano slot JSON; default instruments.piano.example.json")
+    p.add_argument(
+        "--piano-hand",
+        choices=("both", "left", "right"),
+        default="both",
+        help="Piano guided targets to use when --targets is not supplied.",
+    )
+    p.add_argument(
+        "--no-flip-finger-order",
+        action="store_true",
+        help="Disable mirrored-view piano finger-order remapping.",
+    )
     p.add_argument("--drum-pads", type=str, default="", help="Drum pad layout JSON")
 
     p.add_argument("--backend", choices=("cpu", "cpu-baseline", "npu", "npu-full"), default="cpu")

@@ -51,6 +51,41 @@ FINGER_COLORS: dict[int, tuple[int, int, int]] = {
 }
 
 
+def physical_side_from_screen_x(nx: float, *, mirror: bool) -> int:
+    """Return 0 for the performer's left hand and 1 for right hand.
+
+    In the default mirrored/selfie view, screen-left should be treated as the
+    performer's left hand for the UI and piano-note mapping.  Use this
+    mirror-aware mapping instead of MediaPipe handedness, which changes under
+    image flips.
+    """
+    if mirror:
+        return 0 if nx < 0.5 else 1
+    return 0 if nx >= 0.5 else 1
+
+
+MIRRORED_FINGER_ID: dict[int, int] = {
+    4: 20,   # thumb landmark behaves like physical pinky in mirrored piano use
+    8: 16,   # index <-> ring
+    12: 12,  # middle stays middle
+    16: 8,
+    20: 4,
+}
+
+
+def piano_finger_id_for_mapping(fid: int, *, mirror: bool) -> int:
+    """Return physical finger id for piano note mapping.
+
+    With the mirrored selfie feed, the landmark model can treat a physical right
+    hand as the opposite hand, which swaps thumb/pinky identity for note mapping.
+    Remapping only the piano sound slot preserves the raw landmark geometry used
+    by strike detection while making physical fingers trigger the intended notes.
+    """
+    if not mirror:
+        return fid
+    return MIRRORED_FINGER_ID.get(fid, fid)
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(
         description="Air-Drum: joint + tip velocity (like striking drums)",
@@ -79,6 +114,32 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="좌우 반전(selfie/거울) 화면을 끕니다. 기본은 움직임이 직관적이도록 mirror view입니다.",
     )
+    p.add_argument(
+        "--screenshot-out",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="디버그/보고서용: 지정한 경로에 현재 canvas screenshot을 저장합니다.",
+    )
+    p.add_argument(
+        "--screenshot-delay",
+        type=float,
+        default=5.0,
+        help="--screenshot-out 저장 전 대기 시간(초).",
+    )
+    p.add_argument(
+        "--auto-quit-after",
+        type=float,
+        default=0.0,
+        help="지정한 초 뒤 자동 종료합니다. 0이면 수동 종료(q).",
+    )
+    p.add_argument(
+        "--windowed",
+        action="store_true",
+        help="Fullscreen 대신 windowed display를 사용합니다.",
+    )
+    p.add_argument("--display-width", type=int, default=1280, help="--windowed canvas width")
+    p.add_argument("--display-height", type=int, default=720, help="--windowed canvas height")
     p.add_argument(
         "--instruments",
         type=str,
@@ -195,6 +256,32 @@ def draw_finger_chain(
         cv2.line(frame, pts[i], pts[i + 1], color, 2, cv2.LINE_AA)
 
 
+def hand_label_origin(
+    frame: np.ndarray,
+    hand_lms: object,
+    *,
+    reserved_top_px: int = 0,
+) -> tuple[int, int]:
+    """Place a hand label near the landmark bounding box, not a single wrist.
+
+    Wrist-only labels can look shifted for piano poses because the wrist often
+    sits high under the HUD while fingertips are lower.  The bounding box anchor
+    keeps H0:L/H1:R visually attached to the whole hand and moves labels below
+    the box if they would collide with the top overlay.
+    """
+    h, w = frame.shape[:2]
+    xs = [int(lm.x * w) for lm in hand_lms.landmark]
+    ys = [int(lm.y * h) for lm in hand_lms.landmark]
+    x_min, x_max = min(xs), max(xs)
+    y_min, y_max = min(ys), max(ys)
+    x = max(8, min(w - 100, x_min))
+    y = y_min - 10
+    if y < reserved_top_px + 20:
+        y = y_max + 22
+    y = max(24, min(h - 8, y))
+    return x, y
+
+
 def draw_pads(
     frame: np.ndarray,
     pads: list,
@@ -233,6 +320,80 @@ def draw_pads(
         )
 
 
+def put_text_shadow(
+    frame: np.ndarray,
+    text: str,
+    org: tuple[int, int],
+    scale: float,
+    color: tuple[int, int, int],
+    thickness: int = 2,
+) -> None:
+    """Readable overlay text matching the guided evaluator visual style."""
+    cv2.putText(
+        frame,
+        text,
+        org,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        scale,
+        (0, 0, 0),
+        thickness + 2,
+        cv2.LINE_AA,
+    )
+    cv2.putText(
+        frame,
+        text,
+        org,
+        cv2.FONT_HERSHEY_SIMPLEX,
+        scale,
+        color,
+        thickness,
+        cv2.LINE_AA,
+    )
+
+
+def draw_live_overlay(
+    frame: np.ndarray,
+    *,
+    mode: str,
+    backend: str,
+    strike_events: list[tuple[float, str, tuple[int, int, int]]],
+    t: float,
+    mirror: bool,
+) -> list[tuple[float, str, tuple[int, int, int]]]:
+    """Draw the non-guided runtime HUD in the same style as guided_eval.
+
+    It intentionally omits cue guidance such as READY/HIT NOW and countdowns.
+    """
+    h, w = frame.shape[:2]
+    overlay = frame.copy()
+    top_h = 108
+    cv2.rectangle(overlay, (0, 0), (w, top_h), (20, 20, 20), -1)
+    cv2.addWeighted(overlay, 0.60, frame, 0.40, 0, frame)
+
+    title = "PANDA Drum Pads" if mode == "drum" else "PANDA Piano"
+    put_text_shadow(frame, title, (24, 48), 1.25, (255, 255, 255), 3)
+    subtitle = (
+        f"live {mode} | backend {backend} | mirror {'on' if mirror else 'off'} | "
+        "q=quit | fingertip down + joint motion = strike"
+    )
+    put_text_shadow(frame, subtitle, (26, 86), 0.55, (230, 230, 230), 1)
+
+    strike_events = [(exp, txt, col) for exp, txt, col in strike_events if exp > t]
+    if strike_events:
+        recent = strike_events[-8:]
+        panel_h = 44 + len(recent) * 34
+        y0 = max(top_h + 14, h - panel_h - 22)
+        x0 = 24
+        panel_w = min(560, max(320, w // 3))
+        panel = frame.copy()
+        cv2.rectangle(panel, (x0, y0), (x0 + panel_w, y0 + panel_h), (20, 20, 20), -1)
+        cv2.addWeighted(panel, 0.55, frame, 0.45, 0, frame)
+        put_text_shadow(frame, "Recent strikes", (x0 + 12, y0 + 30), 0.65, (240, 240, 240), 1)
+        for i, (_, txt, col) in enumerate(recent):
+            put_text_shadow(frame, txt, (x0 + 16, y0 + 64 + i * 34), 0.72, col, 2)
+    return strike_events
+
+
 def main() -> int:
     args = parse_args()
     if args.list_instruments:
@@ -248,10 +409,14 @@ def main() -> int:
     piano_json = args.instruments.strip() if args.instruments.strip() else "instruments.piano.example.json"
 
     if args.piano:
+        mirror_view = not args.no_mirror
         slots = load_piano_slots_json(piano_json)
         kit = build_piano_kit_for_slots(slots)
-        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
-            h, lm, max_hands=mh, sound_slots=s
+        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands, mv=mirror_view: sound_key_for_finger(
+            h,
+            piano_finger_id_for_mapping(lm, mirror=mv),
+            max_hands=mh,
+            sound_slots=s,
         )
         det: InstrumentStrikeDetector | None = InstrumentStrikeDetector(
             vy_trigger=args.vy_trigger,
@@ -321,49 +486,38 @@ def main() -> int:
     # --- Fullscreen window ---
     title = "AI Air-Drum (piano)" if args.piano else "AI Air-Drum (drum)"
     cv2.namedWindow(title, cv2.WINDOW_NORMAL)
-    cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    if args.windowed:
+        cv2.resizeWindow(title, args.display_width, args.display_height)
+    else:
+        cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
 
-    # --- Detect screen size for layout ---
-    # Canvas = full screen.  Layout: [video | sidebar]
-    # sidebar is ~25% width for mapping + feedback.
-    screen_w, screen_h = 1920, 1080  # fallback
-    try:
-        import subprocess as _sp
-        _xr = _sp.check_output(
-            ["xrandr"], env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
-            stderr=_sp.DEVNULL, timeout=2,
-        ).decode()
-        for _line in _xr.splitlines():
-            if "*" in _line:
-                _res = _line.split()[0]
-                screen_w, screen_h = (int(x) for x in _res.split("x"))
-                break
-    except Exception:
-        pass
-    SIDEBAR_W = max(320, screen_w // 4)
-    VIDEO_W = screen_w - SIDEBAR_W
-    VIDEO_H = screen_h
-    SIDEBAR_BG = (30, 30, 30)
-
-    # --- Key-mapping image for sidebar ---
-    mapping_img_path = (
-        _SCRIPT_DIR / "instruments" / ("piano_default.png" if args.piano else "drum_default.png")
-    )
-    mapping_sidebar: np.ndarray | None = None
-    if mapping_img_path.is_file():
-        _raw = cv2.imread(str(mapping_img_path), cv2.IMREAD_COLOR)
-        if _raw is not None:
-            # Scale to fit sidebar width with padding
-            _fit_w = SIDEBAR_W - 20
-            _scale = _fit_w / _raw.shape[1]
-            _fit_h = int(_raw.shape[0] * _scale)
-            mapping_sidebar = cv2.resize(_raw, (_fit_w, _fit_h), interpolation=cv2.INTER_AREA)
+    # --- Detect display size for guided-style live overlay ---
+    if args.windowed:
+        screen_w, screen_h = args.display_width, args.display_height
+    else:
+        screen_w, screen_h = 1920, 1080  # fallback
+        try:
+            import subprocess as _sp
+            _xr = _sp.check_output(
+                ["xrandr"], env={**os.environ, "DISPLAY": os.environ.get("DISPLAY", ":0")},
+                stderr=_sp.DEVNULL, timeout=2,
+            ).decode()
+            for _line in _xr.splitlines():
+                if "*" in _line:
+                    _res = _line.split()[0]
+                    screen_w, screen_h = (int(x) for x in _res.split("x"))
+                    break
+        except Exception:
+            pass
 
     # --- Strike feedback state: list of (expire_time, text, color) ---
     strike_events: list[tuple[float, str, tuple[int, int, int]]] = []
     active_pads: dict[str, float] = {}
     STRIKE_DISPLAY_SEC = 3.0
     PAD_FLASH_SEC = 0.20
+
+    run_t0 = time.perf_counter()
+    screenshot_saved = False
 
     try:
         fail_streak = 0
@@ -390,28 +544,26 @@ def main() -> int:
 
             side_by_mp.clear()
             for i, hl in enumerate(landmarks_list):
-                # Use screen-side mapping instead of raw MediaPipe hand order.
+                # Use physical side from display coordinates instead of raw
+                # MediaPipe handedness (which flips under mirror transforms).
                 # In the default mirrored/selfie view, this keeps piano notes
-                # intuitive: screen-left hand -> left-hand notes, screen-right
-                # hand -> right-hand notes.
-                side_by_mp[i] = 0 if hl.landmark[0].x < 0.5 else 1
+                # intuitive: physical left hand -> left-hand notes, physical
+                # right hand -> right-hand notes.
+                side_by_mp[i] = physical_side_from_screen_x(
+                    hl.landmark[0].x,
+                    mirror=not args.no_mirror,
+                )
 
             for hand_idx, hand_lms in enumerate(landmarks_list):
                 conf = 1.0
                 if hand_idx < len(handedness_list):
                     conf = float(handedness_list[hand_idx].classification[0].score)
 
-                wrist = hand_lms.landmark[0]
-                wx = int(wrist.x * frame.shape[1])
-                wy = int(wrist.y * frame.shape[0])
-                label = "?"
-                if hand_idx < len(handedness_list):
-                    lr = handedness_list[hand_idx].classification[0].label
-                    label = lr[0].upper()
+                label = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
                 cv2.putText(
                     frame,
                     f"H{hand_idx}:{label}",
-                    (wx - 10, wy - 12),
+                    hand_label_origin(frame, hand_lms, reserved_top_px=76),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.55,
                     (200, 255, 255),
@@ -432,7 +584,11 @@ def main() -> int:
                             if sk in kit:
                                 kit[sk].play()
                             # Record for on-screen feedback
-                            fn = FINGER_LABELS.get(fid, "?")
+                            mapped_fid = piano_finger_id_for_mapping(
+                                fid,
+                                mirror=not args.no_mirror,
+                            )
+                            fn = FINGER_LABELS.get(mapped_fid, "?")
                             side = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
                             strike_events.append(
                                 (
@@ -496,44 +652,31 @@ def main() -> int:
             if not args.piano:
                 draw_pads(frame, pad_zones, active_pads, t)
 
-            # --- Compose full-screen canvas: [scaled video | sidebar] ---
-            vid_scaled = cv2.resize(frame, (VIDEO_W, VIDEO_H), interpolation=cv2.INTER_LINEAR)
-
-            sidebar = np.full((screen_h, SIDEBAR_W, 3), SIDEBAR_BG, dtype=np.uint8)
-
-            # Sidebar title
-            _stitle = "Piano" if args.piano else "Drum Pads"
-            cv2.putText(sidebar, _stitle, (10, 36),
-                        cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), 2, cv2.LINE_AA)
-            cv2.line(sidebar, (10, 48), (SIDEBAR_W - 10, 48), (80, 80, 80), 1)
-
-            # Key-mapping image
-            _sidebar_y = 60
-            if mapping_sidebar is not None:
-                mh, mw = mapping_sidebar.shape[:2]
-                x_pad = (SIDEBAR_W - mw) // 2
-                sidebar[_sidebar_y : _sidebar_y + mh, x_pad : x_pad + mw] = mapping_sidebar
-                _sidebar_y += mh + 16
-
-            # Divider before strikes
-            cv2.line(sidebar, (10, _sidebar_y), (SIDEBAR_W - 10, _sidebar_y), (80, 80, 80), 1)
-            _sidebar_y += 8
-            cv2.putText(sidebar, "Strikes", (10, _sidebar_y + 20),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (200, 200, 200), 1, cv2.LINE_AA)
-            _sidebar_y += 36
-
-            # Strike feedback list
-            strike_events = [(exp, txt, col) for exp, txt, col in strike_events if exp > t]
-            for i, (_, txt, col) in enumerate(strike_events[-30:]):
-                y_pos = _sidebar_y + i * 34
-                if y_pos + 30 > screen_h:
-                    break
-                cv2.putText(sidebar, txt, (14, y_pos + 22),
-                            cv2.FONT_HERSHEY_SIMPLEX, 0.75, col, 2, cv2.LINE_AA)
-
-            canvas = np.hstack((vid_scaled, sidebar))
+            # --- Compose full-screen canvas matching guided_eval style ---
+            canvas = cv2.resize(frame, (screen_w, screen_h), interpolation=cv2.INTER_LINEAR)
+            strike_events = draw_live_overlay(
+                canvas,
+                mode=mode,
+                backend=be,
+                strike_events=strike_events,
+                t=t,
+                mirror=not args.no_mirror,
+            )
             cv2.imshow(title, canvas)
+            run_elapsed = time.perf_counter() - run_t0
+            if (
+                args.screenshot_out.strip()
+                and not screenshot_saved
+                and run_elapsed >= max(0.0, args.screenshot_delay)
+            ):
+                out_path = Path(args.screenshot_out)
+                out_path.parent.mkdir(parents=True, exist_ok=True)
+                cv2.imwrite(str(out_path), canvas)
+                screenshot_saved = True
+                print(f"Saved screenshot: {out_path}", flush=True)
             if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
+            if args.auto_quit_after > 0 and run_elapsed >= args.auto_quit_after:
                 break
     finally:
         cap.release()

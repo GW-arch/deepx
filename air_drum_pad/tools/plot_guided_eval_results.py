@@ -31,7 +31,10 @@ def _load_run(path: Path) -> dict[str, Any]:
         "path": str(path),
         "mode": metadata.get("mode", path.name.split("_")[-1]),
         "backend": metadata.get("backend", "unknown"),
+        "piano_hand": metadata.get("piano_hand"),
         "bpm": metadata.get("bpm"),
+        "protocol": metadata.get("protocol", "sequence"),
+        "scheduled_cue_count": metadata.get("scheduled_cue_count", summary.get("cue_count", 0)),
         "cue_count": summary.get("cue_count", 0),
         "event_count": summary.get("event_count", 0),
         "tp": summary.get("tp", 0),
@@ -54,8 +57,18 @@ def _num(value: float | None) -> float:
     return 0.0 if value is None else float(value)
 
 
+def _label(run: dict[str, Any]) -> str:
+    mode = str(run["mode"]).capitalize()
+    if str(run["mode"]) == "piano":
+        hand = run.get("piano_hand")
+        if hand in {"left", "right"}:
+            return f"Piano\n1 hand ({hand})"
+        return "Piano\n2 hands"
+    return mode
+
+
 def plot(runs: list[dict[str, Any]], out_path: Path) -> None:
-    labels = [r["mode"].capitalize() for r in runs]
+    labels = [_label(r) for r in runs]
     precision = [_pct(r["precision"]) for r in runs]
     recall = [_pct(r["recall"]) for r in runs]
     mean_latency = [_num(r["mean_latency_ms"]) for r in runs]
@@ -65,7 +78,9 @@ def plot(runs: list[dict[str, Any]], out_path: Path) -> None:
     fn = [r["fn"] for r in runs]
 
     fig, axes = plt.subplots(1, 3, figsize=(13.5, 4.2))
-    fig.suptitle("Guided Evaluation Results (Mirrored, Slow Single-Cue Trials)", fontsize=15, fontweight="bold")
+    protocols = {str(r.get("protocol", "sequence")) for r in runs}
+    protocol_label = "Block-Repetition Trials" if protocols == {"blocks"} else "Guided Trials"
+    fig.suptitle(f"Guided Evaluation Results (Mirrored, {protocol_label})", fontsize=15, fontweight="bold")
 
     x = range(len(labels))
     width = 0.35
@@ -100,7 +115,7 @@ def plot(runs: list[dict[str, Any]], out_path: Path) -> None:
     axes[2].legend(fontsize=8)
     axes[2].grid(axis="y", color="#e5e7eb")
     max_count = max((r["tp"] + r["fp"] + r["fn"] for r in runs), default=1)
-    axes[2].set_ylim(0, max_count + 6)
+    axes[2].set_ylim(0, max_count + 22)
     for i, r in enumerate(runs):
         total = r["tp"] + r["fp"] + r["fn"]
         axes[2].text(i, total + 0.5, f"TP {r['tp']}\nFP {r['fp']}\nFN {r['fn']}", ha="center", va="bottom", fontsize=8)

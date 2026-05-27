@@ -148,6 +148,21 @@ def inline_to_reportlab(text: str) -> str:
     return text
 
 
+def is_markdown_visible_caption(text: str) -> bool:
+    """Captions are shown in Markdown/HTML but skipped in DOCX/PDF.
+
+    DOCX/PDF already render image alt text as the figure caption, so the
+    explicit HTML caption lines are only for the .md version.
+    """
+    stripped = text.strip()
+    return bool(
+        re.match(
+            r'^<p\s+align="center"><em>(Figure\s+\d+\.|PANDA project icon\.).*</em></p>$',
+            stripped,
+        )
+    )
+
+
 def build_pdf(md_path: Path, out_path: Path) -> None:
     register_fonts()
     blocks = parse_markdown(md_path.read_text(encoding="utf-8"))
@@ -170,6 +185,8 @@ def build_pdf(md_path: Path, out_path: Path) -> None:
             story.append(Paragraph(inline_to_reportlab(d["text"]), styles[f"Heading{level}"]))
             story.append(Spacer(1, 6))
         elif k == "paragraph":
+            if is_markdown_visible_caption(d):
+                continue
             story.append(Paragraph(inline_to_reportlab(d), styles["Body"]))
             story.append(Spacer(1, 6))
         elif k == "list":
@@ -281,6 +298,8 @@ def build_docx(md_path: Path, out_path: Path) -> None:
         if k == "heading":
             body_parts.append(docx_para(d["text"], style=f"Heading{min(d['level'], 4)}"))
         elif k == "paragraph":
+            if is_markdown_visible_caption(d):
+                continue
             body_parts.append(docx_para(d))
         elif k == "list":
             for idx, item in enumerate(d["items"], 1):

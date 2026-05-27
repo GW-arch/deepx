@@ -72,9 +72,8 @@ def panda_icon() -> None:
         baseline_y = s(y)
         underline_y = baseline_y + s(43)
         pieces = [
-            ("P", "ose-"),
-            ("A", "ware  •  "),
-            ("N", "PU  •  "),
+            ("Pose-A", "ware  •  "),
+            ("N", "PU-Driven  •  "),
             ("D", "igital "),
             ("A", "udio"),
         ]
