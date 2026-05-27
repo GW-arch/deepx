@@ -51,7 +51,7 @@ The implemented project contributes:
 
 ## 2. System Overview
 
-Figure 1 summarizes the runtime pipeline. Frames are captured from a USB camera, processed by one of several hand-tracking backends, converted into per-hand landmark coordinates, passed to the strike detector, mapped to either piano notes or drum pad sounds, and finally played through pre-rendered PCM audio buffers.
+Figure 1 summarizes the runtime pipeline. Frames are captured from a USB camera using an OpenCV-based capture layer [3], processed by one of several hand-tracking backends, converted into per-hand landmark coordinates, passed to the strike detector, mapped to either piano notes or drum pad sounds, and finally played through pre-rendered PCM audio buffers.
 
 ![Figure 1. Runtime pipeline diagram generated programmatically for this report.](figures/system_pipeline.png)
 
@@ -103,7 +103,7 @@ Some figures require live hardware capture rather than offline generation. They 
 
 PANDA sits at the intersection of gesture-based musical interfaces, real-time hand tracking, and embedded edge AI. Prior gesture instruments often use depth cameras, wearable sensors, inertial measurement units, or vision-based pose estimation. Compared with wearable sensors, camera-only systems reduce setup cost and improve accessibility, but they must infer intent from noisy visual motion alone.
 
-This project uses a hand-landmark approach similar to modern single-camera hand-pose systems: a palm or hand detector localizes the hand, a landmark network estimates keypoints, and application logic derives gestures from keypoint dynamics. The project also investigates CPU/NPU deployment trade-offs, because low-latency musical interaction requires both accurate perception and rapid audio response.
+This project uses a hand-landmark approach similar to modern single-camera hand-pose systems such as MediaPipe Hands [1] and the MediaPipe Hand Landmarker task [2]: a palm or hand detector localizes the hand, a landmark network estimates keypoints, and application logic derives gestures from keypoint dynamics. The project also investigates CPU/NPU deployment trade-offs, because low-latency musical interaction requires both accurate perception and rapid audio response.
 
 The implementation is intentionally modular: hand tracking can be swapped across backends, while strike detection and sound mapping remain independent of the model runtime.
 
@@ -190,7 +190,7 @@ This mapping is implemented as the default runtime note configuration and is mir
 
 ### 4.5 Audio Generation
 
-The system pre-renders synthetic drum and piano sounds into `pygame.mixer.Sound` objects to avoid synthesizing audio on every strike. Piano tones are approximately 0.5 seconds long. Short drum samples were lengthened so triggered sounds remain audible despite perception and output latency.
+The system pre-renders synthetic drum and piano sounds into `pygame.mixer.Sound` objects [4] to avoid synthesizing audio on every strike. Piano tones are approximately 0.5 seconds long. Short drum samples were lengthened so triggered sounds remain audible despite perception and output latency.
 
 ---
 
@@ -198,11 +198,11 @@ The system pre-renders synthetic drum and piano sounds into `pygame.mixer.Sound`
 
 ### 5.1 Runtime Backends
 
-The application supports four major backend configurations.
+The application supports four major backend configurations, including MediaPipe-based CPU inference [1], [2] and DEEPX `.dxnn` NPU execution through the DXNN toolchain [5].
 
 | Backend | Palm detection | Hand landmarks | Intended use |
 |---------|----------------|----------------|--------------|
-| `cpu` | MediaPipe internal | MediaPipe internal | Simple CPU-only baseline |
+| `cpu` | MediaPipe internal [1], [2] | MediaPipe internal [1], [2] | Simple CPU-only baseline |
 | `cpu-baseline` | CPU TFLite | CPU TFLite | Comparable pipeline without NPU |
 | `npu-full` | CPU TFLite | NPU `.dxnn` | Accurate palm pipeline with NPU hand inference |
 | `npu` | none / dual-halves approximation | NPU `.dxnn` | Fastest low-latency approximation |
@@ -248,8 +248,8 @@ The hardware/software environment for the recorded prototype measurements was:
 |------|-------|
 | Board | Orange Pi 5 Plus (RK3588, aarch64) |
 | OS / Python | Linux, Python 3.10.12 |
-| DX-RT / `dx_engine` | 1.1.4 |
-| DX-COM | v2.1.0-rc.4 on external compile server |
+| DX-RT / `dx_engine` [5] | 1.1.4 |
+| DX-COM [5] | v2.1.0-rc.4 on external compile server |
 | Camera | USB camera, 640×480 |
 | Offline dataset | 90 captured frames in `dataset/frame_*.png` |
 
@@ -406,7 +406,12 @@ FILLME: course, advisor, lab, hardware provider, or collaborator acknowledgments
 
 ## References
 
-[1] MediaPipe Hands / hand landmark model family, used through CPU MediaPipe and TFLite-derived pipeline paths.
-[2] OpenCV, used for camera capture, drawing, and display.
-[3] pygame, used for low-latency playback of pre-rendered PCM sound buffers.
-[4] DeepX DX-RT / DX-COM toolchain, used for `.dxnn` NPU hand-landmark inference experiments.
+[1] F. Zhang, V. Bazarevsky, A. Vakunov, A. Tkachenka, G. Sung, C.-L. Chang, and M. Grundmann, “MediaPipe Hands: On-device real-time hand tracking,” arXiv preprint arXiv:2006.10214, 2020. [Online]. Available: https://arxiv.org/abs/2006.10214. Accessed: May 27, 2026.
+
+[2] Google AI Edge, “Hand landmarks detection guide,” Google AI for Developers. [Online]. Available: https://ai.google.dev/edge/mediapipe/solutions/vision/hand_landmarker. Accessed: May 27, 2026.
+
+[3] OpenCV Team, “OpenCV modules,” OpenCV Documentation. [Online]. Available: https://docs.opencv.org/4.x/. Accessed: May 27, 2026.
+
+[4] pygame developers, “Pygame front page—pygame v2.6.0 documentation,” pygame. [Online]. Available: https://www.pygame.org/docs/. Accessed: May 27, 2026.
+
+[5] DEEPX, “Get Started,” DEEPX Developer. [Online]. Available: https://developer.deepx.ai/article/get-started/. Accessed: May 27, 2026.
