@@ -1,3 +1,4 @@
 palm_decode_smoke.png
+eval_runs/
 models/vendor/palm_detection_lite.onnx
 models/vendor/palm_detection_lite.dxnn

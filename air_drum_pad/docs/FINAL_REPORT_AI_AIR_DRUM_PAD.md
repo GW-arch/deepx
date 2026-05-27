@@ -262,7 +262,7 @@ The palm detector was also tested as an NPU `.dxnn` candidate. Although the NPU 
 A complete academic evaluation still requires manual measurements of the physical interaction loop. The protocols are defined here so that the missing data can be inserted directly into this report rather than stored only in auxiliary notes.
 
 1. **End-to-end audio latency:** record the performer's hand and the speaker output simultaneously using a high-speed camera or synchronized audio/video setup. For each strike, identify the video frame where the downward hit begins and the first audio waveform onset at the speaker. Compute `Delta t = t_audio - t_video`. Use at least 30 strikes per mode and report mean, standard deviation, and P95 latency.
-2. **Hit accuracy:** run metronome-guided trials in both drum and piano modes. A true positive is an intended strike detected within the allowed time window. A false negative is an intended strike with no valid event. A false positive is an unintended or duplicate event outside the allowed window. Report TP, FP, FN, precision, recall, and qualitative failure cases.
+2. **Hit accuracy:** run guided trials in both drum and piano modes using the built-in visual/audio cue evaluator. The evaluator displays a predefined beat sequence, records detected strike events, matches events to scheduled cues, and exports `cues.csv`, `events.csv`, `matches.csv`, `summary.json`, `summary.md`, and an optional review video. A true positive is an intended strike detected within the allowed time window. A false negative is an intended strike with no valid event. A false positive is an unintended or duplicate event outside the allowed window. Report TP, FP, FN, precision, recall, and qualitative failure cases.
 3. **Per-run logging:** retain the internal build identifier, backend, camera resolution, model checksums, `vy_trigger`, `joint_dps`, `cooldown`, lighting conditions, and raw event log fields such as `t`, `frame_id`, `infer_ms`, `hand_id`, `finger_id`, `pad/note`, and `trigger`.
 
 The following figures are still placeholders because they require live hardware capture.
@@ -293,11 +293,11 @@ The latest validation run produced:
 | Test group | Result |
 |------------|--------|
 | Python syntax check | Passed |
-| Unit tests | 28/28 passed |
+| Unit tests | 34/34 passed |
 | Palm decode tests | 15/15 passed |
 | Dataset benchmark smoke | Skipped intentionally in the portable validation run |
 
-The unit tests cover default piano mapping, synthetic audio duration, pad-zone generation, pad JSON validation, instrument slot validation, strike detector thresholds, middle-finger sensitivity, cooldown behavior, ROI helpers, benchmark helper functions, and dataset capture indexing.
+The unit tests cover default piano mapping, synthetic audio duration, pad-zone generation, pad JSON validation, instrument slot validation, strike detector thresholds, middle-finger sensitivity, cooldown behavior, ROI helpers, benchmark helper functions, dataset capture indexing, and the guided evaluation cue/matching/output helpers.
 
 ### 7.3 Backend Performance Summary
 
@@ -387,7 +387,7 @@ Recommended next steps are:
 4. Add per-user calibration for pad positions, handedness, and strike thresholds.
 5. Investigate palm detector alternatives suitable for NPU deployment.
 6. Add optional MIDI output so the system can drive external instruments.
-7. Add visual/audio metronome support for controlled evaluation.
+7. Run the guided visual/audio cue evaluator to collect final hit-accuracy results for both modes.
 8. Conduct a small user study comparing playability of drum and piano modes.
 
 ---

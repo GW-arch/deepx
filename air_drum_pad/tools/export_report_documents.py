@@ -23,12 +23,9 @@ from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import inch
 from reportlab.pdfbase import pdfmetrics
-from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Image,
     KeepTogether,
-    ListFlowable,
-    ListItem,
     Paragraph,
     Preformatted,
     SimpleDocTemplate,
@@ -40,9 +37,10 @@ from reportlab.platypus import (
 ROOT = Path(__file__).resolve().parent.parent
 DOCS = ROOT / "docs"
 
-FONT_REGULAR = "/usr/share/fonts/truetype/nanum/NanumGothic.ttf"
-FONT_BOLD = "/usr/share/fonts/truetype/nanum/NanumGothicBold.ttf"
-FONT_MONO = "/usr/share/fonts/truetype/dejavu/DejaVuSansMono.ttf"
+REPORT_FONT_FAMILY = "Times New Roman"
+PDF_FONT_REGULAR = "Times-Roman"
+PDF_FONT_BOLD = "Times-Bold"
+PDF_FONT_MONO = "Courier"
 
 
 @dataclass
@@ -145,7 +143,7 @@ def inline_to_reportlab(text: str) -> str:
         .replace("&lt;b&gt;", "<b>")
         .replace("&lt;/b&gt;", "</b>")
     )
-    text = re.sub(r"`([^`]+)`", r"<font name='ReportMono'>\1</font>", text)
+    text = re.sub(r"`([^`]+)`", rf"<font name='{PDF_FONT_MONO}'>\1</font>", text)
     text = re.sub(r"\*\*([^*]+)\*\*", r"<b>\1</b>", text)
     return text
 
@@ -175,8 +173,9 @@ def build_pdf(md_path: Path, out_path: Path) -> None:
             story.append(Paragraph(inline_to_reportlab(d), styles["Body"]))
             story.append(Spacer(1, 6))
         elif k == "list":
-            flow_items = [ListItem(Paragraph(inline_to_reportlab(x), styles["Body"]), leftIndent=12) for x in d["items"]]
-            story.append(ListFlowable(flow_items, bulletType="1" if d["ordered"] else "bullet", leftIndent=18))
+            for idx, item in enumerate(d["items"], 1):
+                prefix = f"{idx}. " if d["ordered"] else "- "
+                story.append(Paragraph(inline_to_reportlab(prefix + item), styles["ListBody"]))
             story.append(Spacer(1, 6))
         elif k == "code":
             story.append(Preformatted(d["text"], styles["Code"]))
@@ -193,23 +192,31 @@ def build_pdf(md_path: Path, out_path: Path) -> None:
 
 
 def register_fonts() -> None:
-    for name, path in [("Report", FONT_REGULAR), ("ReportBold", FONT_BOLD), ("ReportMono", FONT_MONO)]:
-        if name not in pdfmetrics.getRegisteredFontNames():
-            pdfmetrics.registerFont(TTFont(name, path))
+    # ReportLab ships the standard PostScript Times family.  Using it keeps the
+    # generated PDF in a Times New Roman-compatible academic style without
+    # relying on a proprietary Times New Roman TTF being installed on Linux.
+    pdfmetrics.registerFontFamily(
+        "Times",
+        normal=PDF_FONT_REGULAR,
+        bold=PDF_FONT_BOLD,
+        italic="Times-Italic",
+        boldItalic="Times-BoldItalic",
+    )
 
 
 def make_pdf_styles() -> dict[str, ParagraphStyle]:
     base = getSampleStyleSheet()
     return {
-        "Heading1": ParagraphStyle("Heading1", parent=base["Heading1"], fontName="ReportBold", fontSize=18, leading=22, spaceBefore=10, spaceAfter=8),
-        "Heading2": ParagraphStyle("Heading2", parent=base["Heading2"], fontName="ReportBold", fontSize=15, leading=19, spaceBefore=8, spaceAfter=6),
-        "Heading3": ParagraphStyle("Heading3", parent=base["Heading3"], fontName="ReportBold", fontSize=12.5, leading=16, spaceBefore=6, spaceAfter=4),
-        "Heading4": ParagraphStyle("Heading4", parent=base["Heading4"], fontName="ReportBold", fontSize=11, leading=14, spaceBefore=5, spaceAfter=3),
-        "Body": ParagraphStyle("Body", parent=base["BodyText"], fontName="Report", fontSize=9.5, leading=13.2, alignment=TA_LEFT),
-        "Caption": ParagraphStyle("Caption", parent=base["BodyText"], fontName="Report", fontSize=8.5, leading=11, alignment=TA_CENTER, textColor=colors.HexColor("#475569")),
-        "Code": ParagraphStyle("Code", parent=base["Code"], fontName="ReportMono", fontSize=7.8, leading=10, backColor=colors.HexColor("#f1f5f9"), borderPadding=5),
-        "TableCell": ParagraphStyle("TableCell", parent=base["BodyText"], fontName="Report", fontSize=7.2, leading=9.2),
-        "TableHead": ParagraphStyle("TableHead", parent=base["BodyText"], fontName="ReportBold", fontSize=7.2, leading=9.2, textColor=colors.white),
+        "Heading1": ParagraphStyle("Heading1", parent=base["Heading1"], fontName=PDF_FONT_BOLD, fontSize=18, leading=22, spaceBefore=10, spaceAfter=8),
+        "Heading2": ParagraphStyle("Heading2", parent=base["Heading2"], fontName=PDF_FONT_BOLD, fontSize=15, leading=19, spaceBefore=8, spaceAfter=6),
+        "Heading3": ParagraphStyle("Heading3", parent=base["Heading3"], fontName=PDF_FONT_BOLD, fontSize=12.5, leading=16, spaceBefore=6, spaceAfter=4),
+        "Heading4": ParagraphStyle("Heading4", parent=base["Heading4"], fontName=PDF_FONT_BOLD, fontSize=11, leading=14, spaceBefore=5, spaceAfter=3),
+        "Body": ParagraphStyle("Body", parent=base["BodyText"], fontName=PDF_FONT_REGULAR, fontSize=9.5, leading=13.2, alignment=TA_LEFT),
+        "ListBody": ParagraphStyle("ListBody", parent=base["BodyText"], fontName=PDF_FONT_REGULAR, fontSize=9.5, leading=13.2, leftIndent=14, firstLineIndent=-8, alignment=TA_LEFT),
+        "Caption": ParagraphStyle("Caption", parent=base["BodyText"], fontName=PDF_FONT_REGULAR, fontSize=8.5, leading=11, alignment=TA_CENTER, textColor=colors.HexColor("#475569")),
+        "Code": ParagraphStyle("Code", parent=base["Code"], fontName=PDF_FONT_MONO, fontSize=7.8, leading=10, backColor=colors.HexColor("#f1f5f9"), borderPadding=5),
+        "TableCell": ParagraphStyle("TableCell", parent=base["BodyText"], fontName=PDF_FONT_REGULAR, fontSize=7.2, leading=9.2),
+        "TableHead": ParagraphStyle("TableHead", parent=base["BodyText"], fontName=PDF_FONT_BOLD, fontSize=7.2, leading=9.2, textColor=colors.white),
     }
 
 
@@ -445,14 +452,15 @@ def package_rels() -> str:
 def styles_xml() -> str:
     return f'''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <w:styles xmlns:w="{W_NS}">
-<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Malgun Gothic"/><w:sz w:val="20"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:rFonts w:ascii="Arial" w:hAnsi="Arial" w:eastAsia="Malgun Gothic"/><w:sz w:val="34"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:sz w:val="28"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:sz w:val="24"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Heading4"><w:name w:val="heading 4"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:sz w:val="22"/></w:rPr></w:style>
+<w:docDefaults><w:rPrDefault><w:rPr><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:sz w:val="20"/></w:rPr></w:rPrDefault></w:docDefaults>
+<w:style w:type="paragraph" w:default="1" w:styleId="Normal"><w:name w:val="Normal"/><w:rPr><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:sz w:val="20"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading1"><w:name w:val="heading 1"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:sz w:val="34"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading2"><w:name w:val="heading 2"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:sz w:val="28"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading3"><w:name w:val="heading 3"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:sz w:val="24"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Heading4"><w:name w:val="heading 4"/><w:basedOn w:val="Normal"/><w:next w:val="Normal"/><w:rPr><w:b/><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:sz w:val="22"/></w:rPr></w:style>
 <w:style w:type="paragraph" w:styleId="ListParagraph"><w:name w:val="List Paragraph"/><w:basedOn w:val="Normal"/><w:pPr><w:ind w:left="360"/></w:pPr></w:style>
-<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/></w:pPr><w:rPr><w:i/><w:color w:val="475569"/><w:sz w:val="18"/></w:rPr></w:style>
-<w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:rPr><w:rFonts w:ascii="Consolas" w:hAnsi="Consolas" w:eastAsia="Malgun Gothic"/><w:sz w:val="18"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Caption"><w:name w:val="Caption"/><w:basedOn w:val="Normal"/><w:pPr><w:jc w:val="center"/></w:pPr><w:rPr><w:i/><w:rFonts w:ascii="{REPORT_FONT_FAMILY}" w:hAnsi="{REPORT_FONT_FAMILY}" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="{REPORT_FONT_FAMILY}"/><w:color w:val="475569"/><w:sz w:val="18"/></w:rPr></w:style>
+<w:style w:type="paragraph" w:styleId="Code"><w:name w:val="Code"/><w:basedOn w:val="Normal"/><w:rPr><w:rFonts w:ascii="Courier New" w:hAnsi="Courier New" w:eastAsia="{REPORT_FONT_FAMILY}" w:cs="Courier New"/><w:sz w:val="18"/></w:rPr></w:style>
 </w:styles>'''
 
 

@@ -32,6 +32,19 @@ from drumkit_audio import kit_keys, PIANO_DEFAULT_SLOTS
 from strike_detector import PadZone, default_pad_zones
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "instruments"
+REPORT_FONT_FAMILY = "Times New Roman"
+plt.rcParams.update(
+    {
+        "font.family": "serif",
+        "font.serif": [
+            REPORT_FONT_FAMILY,
+            "Times",
+            "Liberation Serif",
+            "DejaVu Serif",
+        ],
+        "mathtext.fontset": "stix",
+    }
+)
 
 # ── finger geometry (simplified hand outline) ──────────────────────────────
 
@@ -164,7 +177,7 @@ def generate_diagram(
         boxstyle="round,pad=0.12", fc="#ecf0f1", ec="#bdc3c7", lw=1.2,
     )
     ax.add_patch(cmd_box)
-    ax.text(-6.0, 5.88, "$ " + run_cmd, fontsize=8.5, fontfamily="monospace",
+    ax.text(-6.0, 5.88, "$ " + run_cmd, fontsize=8.5, fontfamily="serif",
             va="center", color="#2c3e50")
 
     # Legend
@@ -281,7 +294,7 @@ def generate_pad_diagram(
         boxstyle="round,pad=0.12", fc="#ecf0f1", ec="#bdc3c7", lw=1.2,
     )
     ax.add_patch(cmd_box)
-    ax.text(0.75, 6.075, "$ " + run_cmd, fontsize=8.5, fontfamily="monospace",
+    ax.text(0.75, 6.075, "$ " + run_cmd, fontsize=8.5, fontfamily="serif",
             va="center", color="#2c3e50")
 
     _draw_pad_layout(ax, pads, x=1.0, y=0.9, w=10.0, h=4.45)
