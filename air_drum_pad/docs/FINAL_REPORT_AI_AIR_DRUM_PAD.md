@@ -105,15 +105,15 @@ A custom JSON piano layout example is also generated using the same default slot
 
 ### 2.2 Live Interface Screenshots
 
-Live screenshots were captured from the normal, non-guided runtime after the mirror-view update. The non-guided interface uses the same full-camera overlay style as the guided evaluator, but removes cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed, fingertip landmark overlays, and recent strike feedback. The piano screenshot shows the live hand-to-note interface with recent strike feedback overlaid on the camera view.
+Live screenshots were captured from the normal, non-guided runtime after the mirror-view and shape-preserving NPU bias-calibration updates. The non-guided interface uses the same full-camera overlay style as the guided evaluator, but removes cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed, fingertip landmark overlays, and recent strike feedback. The piano screenshot shows the live hand-to-note interface with recent strike feedback overlaid on the camera view.
 
-![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored CPU+NPU interface.](figures/live_drum_interface.png)
+![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.](figures/live_drum_interface.png)
 
-<p align="center"><em>Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored CPU+NPU interface.</em></p>
+<p align="center"><em>Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.</em></p>
 
-![Figure 7. Non-guided piano runtime screenshot captured from the mirrored interface.](figures/live_piano_interface.png)
+![Figure 7. Non-guided piano runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.](figures/live_piano_interface.png)
 
-<p align="center"><em>Figure 7. Non-guided piano runtime screenshot captured from the mirrored interface.</em></p>
+<p align="center"><em>Figure 7. Non-guided piano runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.</em></p>
 
 ---
 
@@ -291,12 +291,6 @@ A complete academic evaluation still requires manual measurements of the physica
 2. **Hit accuracy:** run guided trials in both drum and piano modes using the built-in visual/audio cue evaluator. The evaluator displays a predefined beat sequence, records detected strike events, matches events to scheduled cues, and exports `cues.csv`, `events.csv`, `matches.csv`, `summary.json`, `summary.md`, and an optional review video. A true positive is an intended strike detected within the allowed time window. A false negative is an intended strike with no valid event. A false positive is an unintended or duplicate event outside the allowed window. The pilot guided results are reported in Section 7.3.
 3. **Per-run logging:** retain the internal build identifier, backend, camera resolution, model checksums, `vy_trigger`, `joint_dps`, `cooldown`, lighting conditions, and raw event log fields such as `t`, `frame_id`, `infer_ms`, `hand_id`, `finger_id`, `pad/note`, and `trigger`.
 
-The following figure is still a placeholder because it requires synchronized high-speed video/audio capture.
-
-![Figure 10. FILLME: high-speed-camera setup showing hand motion and speaker/audio waveform for E2E latency measurement.](FILLME_latency_measurement_setup.png)
-
-<p align="center"><em>Figure 10. FILLME: high-speed-camera setup showing hand motion and speaker/audio waveform for E2E latency measurement.</em></p>
-
 ---
 
 ## 7. Results
@@ -331,15 +325,15 @@ A guided live evaluation was run on May 27, 2026 using the mirrored camera inter
 
 An initial two-hand piano guided run remained nearly unusable, with only 7.5% recall / target accuracy. Therefore, the final piano guided evaluation used a one-hand right-hand protocol covering only `C5–G5`, with the tracker limited to one hand. This restriction directly targets the observed failure mode where simultaneous two-hand piano tracking produced unstable finger identity and very low note accuracy.
 
-Figures 11 and 12 show the guided evaluator UI used for this measurement. Unlike the normal runtime screenshots in Section 2.2, these screens include the current cue, readiness countdown, cue index, target hint, and the accepted matching window.
+Figures 10 and 11 show the guided evaluator UI used for this measurement. Unlike the normal runtime screenshots in Section 2.2, these screens include the current cue, readiness countdown, cue index, target hint, and the accepted matching window.
 
-![Figure 11. Guided drum evaluation screenshot showing the current pad cue and mirrored pad overlay.](figures/guided_eval_drum_live.png)
+![Figure 10. Guided drum evaluation screenshot showing the current pad cue and mirrored pad overlay.](figures/guided_eval_drum_live.png)
 
-<p align="center"><em>Figure 11. Guided drum evaluation screenshot showing the current pad cue and mirrored pad overlay.</em></p>
+<p align="center"><em>Figure 10. Guided drum evaluation screenshot showing the current pad cue and mirrored pad overlay.</em></p>
 
-![Figure 12. Guided piano evaluation screenshot showing the current note cue and suggested finger.](figures/guided_eval_piano_live.png)
+![Figure 11. Guided piano evaluation screenshot showing the current note cue and suggested finger.](figures/guided_eval_piano_live.png)
 
-<p align="center"><em>Figure 12. Guided piano evaluation screenshot showing the current note cue and suggested finger.</em></p>
+<p align="center"><em>Figure 11. Guided piano evaluation screenshot showing the current note cue and suggested finger.</em></p>
 
 | Mode | Scored cues | TP | FP | FN | Precision | Recall / target accuracy | Mean cue-to-detection latency |
 |------|------------:|---:|---:|---:|----------:|-------------------------:|------------------------------:|
@@ -347,9 +341,9 @@ Figures 11 and 12 show the guided evaluator UI used for this measurement. Unlike
 | Piano, two hands (diagnostic) | 40 | 3 | 79 | 37 | 3.7% | 7.5% | 291 ms |
 | Piano, right hand only | 20 | 3 | 32 | 17 | 8.6% | 15.0% | 304 ms |
 
-![Figure 13. Guided evaluation plot generated from the mirrored `npu-full` block-repetition drum, two-hand piano, and one-hand piano runs.](figures/guided_eval_results.png)
+![Figure 12. Guided evaluation plot generated from the mirrored `npu-full` block-repetition drum, two-hand piano, and one-hand piano runs.](figures/guided_eval_results.png)
 
-<p align="center"><em>Figure 13. Guided evaluation plot generated from the mirrored `npu-full` block-repetition drum, two-hand piano, and one-hand piano runs.</em></p>
+<p align="center"><em>Figure 12. Guided evaluation plot generated from the mirrored `npu-full` block-repetition drum, two-hand piano, and one-hand piano runs.</em></p>
 
 The drum-pad interface performed better than the piano interface because drum mode only requires the fingertip strike to land inside a visible rectangle, while piano mode requires stable hand side and finger identity. The two-hand piano diagnostic run confirms this difficulty: many strikes were detected, but most did not match the prompted note. Restricting piano evaluation to one right hand improved target accuracy from 7.5% to 15.0%, but the absolute value remains low and indicates that finger identity, mirrored-hand interpretation, and duplicate-strike suppression need more work. The cue-to-detection latency values include human reaction time and should not be interpreted as acoustic motion-to-speaker latency.
 
