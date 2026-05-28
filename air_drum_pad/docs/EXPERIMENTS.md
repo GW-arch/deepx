@@ -146,7 +146,7 @@ NPU landmark affine 보정(`models/npu_landmark_correction.dataset.json`) 적용
 | Right | 90 | **0.0102** | **0.0112** | **0.0223** | 0.1701 |
 | Left | 83 | **0.0092** | **0.0090** | **0.0193** | **0.0437** |
 
-> 보정은 평균/손끝 오차를 약 60% 이상 줄이지만, 현재 값은 동일 dataset에 fit/eval한 결과입니다. 데모 기본값으로 쓰기 전에 별도 capture set으로 hold-out 검증이 필요합니다.
+> 보정은 평균/손끝 오차를 약 60% 이상 줄이므로 현재 live demo 기본값으로 활성화했습니다. 다만 위 수치는 동일 dataset에 fit/eval한 결과이므로, 제출 전 별도 capture set으로 hold-out 검증이 필요합니다.
 
 CSV/JSON 저장:
 

@@ -105,18 +105,21 @@ python3 main.py --backend cpu-baseline \
 
 #### npu-full 사용 예시
 
-`npu-full`은 이제 `main.py` 기본값입니다. 기본 hand `.dxnn`, layout JSON, palm TFLite, dataset-calibrated landmark correction JSON은 `models/vendor/`와 `models/`에서 자동으로 선택됩니다. 기본 화면은 selfie mirror이지만, 추론은 raw camera frame에서 수행한 뒤 표시 좌표만 mirror 처리하여 오른손 thumb/pinky 순서를 보존합니다.
+`npu-full`은 이제 `main.py` 기본값입니다. 기본 hand `.dxnn`, layout JSON, palm TFLite, dataset-calibrated landmark correction JSON은 `models/vendor/`와 `models/`에서 자동으로 선택됩니다. 기본 화면은 selfie mirror이며, live UI는 guided evaluator와 같은 windowed PANDA title/yellow skeleton 스타일을 사용합니다.
 
 ```bash
 python3 main.py --max-hands 2
 
-# 보정 JSON까지 적용하는 명시적 실행
+# 기본값과 동일한 명시적 실행
 python3 main.py --backend npu-full \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
   --palm-tflite models/vendor/palm_detection_lite.tflite \
   --landmark-correction models/npu_landmark_correction.dataset.json \
   --max-hands 2
+
+# 보정 없이 비교/디버깅하려면 빈 문자열로 끕니다.
+python3 main.py --backend npu-full --landmark-correction "" --max-hands 2
 ```
 
 `--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. `--palm-dxnn` 플래그도 존재하나 양자화 품질 문제로 **명시적으로 지정한 실험에서만 사용**하세요.
@@ -157,7 +160,7 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 
 `--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`과 `--async-palm`은 지연을 줄이는 **실험 옵션**입니다.
 
-`--landmark-correction`은 현재 dataset에서 학습한 NPU→CPU affine xy 보정입니다. 90프레임 training set 기준 `npu-full` 평균 landmark 오차가 Right `0.0270→0.0102`, Left `0.0256→0.0092`로 줄었습니다. 단, dataset-specific calibration이므로 다른 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다.
+`--landmark-correction`은 현재 dataset에서 학습한 NPU→CPU affine xy 보정이며 `main.py`의 기본값입니다. 90프레임 training set 기준 `npu-full` 평균 landmark 오차가 Right `0.0270→0.0102`, Left `0.0256→0.0092`로 줄었습니다. 단, dataset-specific calibration이므로 다른 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다.
 
 #### 품질 체크 / 회귀 테스트
 

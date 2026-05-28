@@ -241,10 +241,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--landmark-correction",
         type=str,
-        default="",
+        default="models/npu_landmark_correction.dataset.json",
         metavar="PATH",
         help=(
-            "npu-full 실험용: CPU baseline 기준으로 학습한 NPU landmark affine 보정 JSON. "
+            "npu-full: CPU baseline 기준으로 학습한 NPU landmark affine 보정 JSON "
+            "(기본: models/npu_landmark_correction.dataset.json, 빈 문자열로 비활성화). "
             "tools/calibrate_npu_landmarks.py 로 생성."
         ),
     )
@@ -445,6 +446,14 @@ def main() -> int:
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
     cap.set(cv2.CAP_PROP_FPS, 60)
 
+    landmark_correction = args.landmark_correction.strip()
+    if landmark_correction and not Path(landmark_correction).is_file():
+        print(
+            f"Warning: landmark correction file not found; disabling: {landmark_correction}",
+            file=sys.stderr,
+        )
+        landmark_correction = ""
+
     tracker = create_tracker(
         args.backend,
         max_hands=args.max_hands,
@@ -456,9 +465,7 @@ def main() -> int:
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
-        landmark_correction=(
-            args.landmark_correction if args.landmark_correction.strip() else None
-        ),
+        landmark_correction=landmark_correction or None,
     )
 
     fps_t0 = time.perf_counter()
@@ -467,6 +474,8 @@ def main() -> int:
     be = f"{args.backend.upper()}"
     if args.backend in ("npu", "npu-full") and args.dxnn.strip():
         be = f"{args.backend.upper()}:{Path(args.dxnn).name}"
+    if landmark_correction and args.backend == "npu-full":
+        be += f"+CALIB:{Path(landmark_correction).name}"
     mapping_hint = "(손,손가락)→음" if args.piano else "on-screen rectangle pad → drum sound"
     print(
         f"Air-Drum [{mode}] backend={be}: q=quit | tip↓ + joint motion → hit | {mapping_hint}",
