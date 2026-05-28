@@ -1,0 +1,41 @@
+{
+  "description": "Four large pads for PANDA demo videos: kick-kick-clap with a small crash variation.",
+  "pads": [
+    {
+      "label": "kick",
+      "sound": "kick",
+      "x1": 0.06,
+      "y1": 0.34,
+      "x2": 0.49,
+      "y2": 0.60,
+      "color": [80, 80, 190]
+    },
+    {
+      "label": "clap",
+      "sound": "clap",
+      "x1": 0.51,
+      "y1": 0.34,
+      "x2": 0.94,
+      "y2": 0.60,
+      "color": [80, 170, 230]
+    },
+    {
+      "label": "snare",
+      "sound": "snare",
+      "x1": 0.06,
+      "y1": 0.62,
+      "x2": 0.49,
+      "y2": 0.88,
+      "color": [80, 185, 80]
+    },
+    {
+      "label": "crash",
+      "sound": "crash",
+      "x1": 0.51,
+      "y1": 0.62,
+      "x2": 0.94,
+      "y2": 0.88,
+      "color": [60, 120, 220]
+    }
+  ]
+}

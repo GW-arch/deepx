@@ -64,7 +64,7 @@ python3 main.py --backend npu --piano --camera 0 \
 
 ### 데모 비디오용 쉬운 드럼 런처
 
-`demo_run.py`는 드럼 모드를 켜고 배경 트랙을 함께 재생합니다. 저작권 음악 파일은 포함하지 않으므로, 실제 Queen 곡을 쓰려면 본인이 가진 합법적인 오디오 파일을 지정하세요.
+`demo_run.py`는 드럼 모드를 켜고 배경 트랙을 함께 재생합니다. 데모에서는 복잡한 8패드 대신 큰 4패드(`kick`, `clap`, `snare`, `crash`) 레이아웃을 자동으로 사용합니다. 저작권 음악 파일은 포함하지 않으므로, 실제 Queen 곡을 쓰려면 본인이 가진 합법적인 오디오 파일을 지정하세요.
 
 ```bash
 # dataset/ 안에 MP3/WAV/OGG가 하나 있으면 자동으로 사용
@@ -85,7 +85,10 @@ python3 demo_run.py --print-pattern
 
 ```text
 Count:  1   &   2   &   3   &   4   &
-Pads:   kick kick snare -   kick kick snare -
+Main:   kick kick clap  -   kick kick clap  -
+
+Tiny variation every 4th bar:
+        kick kick clap  -   kick kick crash -
 ```
 
 > **스크립트로 실행:** `scripts/run_cpu_piano.sh`, `scripts/run_npu_piano.sh`(dual-halves), `scripts/run_npu_full_piano.sh`(Palm+Hand 정식 파이프라인, correction 자동 적용 가능)를 사용하면 환경변수(`DISPLAY`, `XAUTHORITY`)를 자동으로 설정합니다.

@@ -25,6 +25,7 @@ import numpy as np
 
 SCRIPT_DIR = Path(__file__).resolve().parent
 DATASET_DIR = SCRIPT_DIR / "dataset"
+DEMO_PADS_PATH = SCRIPT_DIR / "pads.demo_wwry.json"
 BACKING_EXTENSIONS = (".mp3", ".wav", ".ogg")
 
 
@@ -32,7 +33,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     p = argparse.ArgumentParser(
         description=(
             "Run PANDA drum mode with an optional background track and a very "
-            "easy kick-kick-snare demo pattern."
+            "easy kick-kick-clap demo pattern."
         ),
     )
     p.add_argument("--camera", type=int, default=0)
@@ -63,6 +64,11 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         help="Do not generate a guide loop when no backing audio is found.",
     )
     p.add_argument(
+        "--no-demo-pads",
+        action="store_true",
+        help="Use the normal 8-pad drum layout instead of the 4-pad demo layout.",
+    )
+    p.add_argument(
         "--print-pattern",
         action="store_true",
         help="Print the demo pattern and exit.",
@@ -74,10 +80,13 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
 def print_pattern() -> None:
     print(
         "\nPANDA air-drum demo pattern (We Will Rock You-style):\n\n"
+        "Four demo pads: kick | clap | snare | crash\n\n"
         "Count:  1   &   2   &   3   &   4   &\n"
-        "Pads:   kick kick snare -   kick kick snare -\n\n"
-        "Easy ending: repeat for 3 bars, then use crash on the final hit:\n"
-        "        kick kick snare | kick kick crash\n"
+        "Main:   kick kick clap  -   kick kick clap  -\n\n"
+        "Tiny variation every 4th bar, using 3 sounds:\n"
+        "        kick kick clap  -   kick kick crash -\n\n"
+        "Optional stronger fill: swap the first clap to snare:\n"
+        "        kick kick snare -   kick kick crash -\n"
     )
 
 
@@ -133,6 +142,16 @@ def _clap(sr: int) -> np.ndarray:
     return 0.45 * noise * env
 
 
+def _accent_crash(sr: int) -> np.ndarray:
+    n = int(0.40 * sr)
+    t = np.arange(n, dtype=np.float64) / sr
+    rng = np.random.default_rng(13)
+    noise = rng.uniform(-1.0, 1.0, n)
+    shimmer = 0.25 * np.sin(2.0 * math.pi * 360.0 * t)
+    env = np.exp(-t / 0.16)
+    return 0.38 * (noise + shimmer) * env
+
+
 def _count_tick(sr: int) -> np.ndarray:
     n = int(0.07 * sr)
     t = np.arange(n, dtype=np.float64) / sr
@@ -147,7 +166,11 @@ def _mix_at(buf: np.ndarray, sample: np.ndarray, t_s: float, sr: int) -> None:
 
 
 def generate_guide(path: Path, *, bpm: float, bars: int, sr: int = 44100) -> Path:
-    """Generate a simple non-copyright guide: count-in + kick-kick-clap loop."""
+    """Generate a simple non-copyright guide: count-in + kick-kick-clap loop.
+
+    Every fourth bar replaces the final clap with a brighter accent so the demo
+    has a tiny musical shift without becoming difficult to perform.
+    """
     bpm = max(40.0, float(bpm))
     bars = max(1, int(bars))
     beat_s = 60.0 / bpm
@@ -157,6 +180,7 @@ def generate_guide(path: Path, *, bpm: float, bars: int, sr: int = 44100) -> Pat
     buf = np.zeros(int(total_s * sr), dtype=np.float64)
     stomp = _stomp(sr)
     clap = _clap(sr)
+    accent = _accent_crash(sr)
     tick = _count_tick(sr)
 
     # Four-count intro.
@@ -166,6 +190,7 @@ def generate_guide(path: Path, *, bpm: float, bars: int, sr: int = 44100) -> Pat
     start_s = count_in_bars * bar_s
     for bar in range(bars):
         b0 = start_s + bar * bar_s
+        final_hit = accent if (bar + 1) % 4 == 0 else clap
         # 1, &, 2, then 3, &, 4.
         for offset, sample in (
             (0.0, stomp),
@@ -173,7 +198,7 @@ def generate_guide(path: Path, *, bpm: float, bars: int, sr: int = 44100) -> Pat
             (1.0 * beat_s, clap),
             (2.0 * beat_s, stomp),
             (2.5 * beat_s, stomp),
-            (3.0 * beat_s, clap),
+            (3.0 * beat_s, final_hit),
         ):
             _mix_at(buf, sample, b0 + offset, sr)
 
@@ -222,6 +247,8 @@ def main() -> int:
         "--camera",
         str(args.camera),
     ]
+    if not args.no_demo_pads and "--drum-pads" not in passthrough:
+        cmd += ["--drum-pads", str(DEMO_PADS_PATH)]
     if backing_path is not None:
         cmd += [
             "--backing-track",
