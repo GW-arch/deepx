@@ -14,6 +14,7 @@ from pathlib import Path
 
 # Resolve relative paths against the script's own directory so that
 # default model paths like "models/vendor/…" work from any cwd.
+_ORIGINAL_CWD = Path.cwd()
 _SCRIPT_DIR = Path(__file__).resolve().parent
 os.chdir(_SCRIPT_DIR)
 
@@ -179,6 +180,24 @@ def parse_args() -> argparse.Namespace:
         help="피아노 모드: 음명(C4 등) 합성음. 기본 instruments.piano.example.json 사용, --instruments로 변경 가능",
     )
     p.add_argument(
+        "--backing-track",
+        type=str,
+        default="",
+        metavar="PATH",
+        help="Optional user-supplied WAV/MP3/OGG backing track to play under live drum/piano sounds.",
+    )
+    p.add_argument(
+        "--backing-volume",
+        type=float,
+        default=0.45,
+        help="Background track volume in [0, 1].",
+    )
+    p.add_argument(
+        "--backing-loop",
+        action="store_true",
+        help="Loop the background track until the live session quits.",
+    )
+    p.add_argument(
         "--backend",
         type=str,
         default="npu-full",
@@ -250,6 +269,17 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     return p.parse_args()
+
+
+def resolve_user_path(path_str: str) -> Path:
+    """Resolve CLI paths against the launch cwd first, then the script dir."""
+    p = Path(path_str).expanduser()
+    if p.is_absolute():
+        return p
+    launch_path = (_ORIGINAL_CWD / p).resolve()
+    if launch_path.exists():
+        return launch_path
+    return (_SCRIPT_DIR / p).resolve()
 
 
 def hand_label_origin(
@@ -355,6 +385,7 @@ def draw_live_overlay(
     strike_events: list[tuple[float, str, tuple[int, int, int]]],
     t: float,
     mirror: bool,
+    backing_label: str = "",
 ) -> list[tuple[float, str, tuple[int, int, int]]]:
     """Draw the non-guided runtime HUD in the same style as guided_eval.
 
@@ -372,6 +403,8 @@ def draw_live_overlay(
         f"live {mode} | backend {backend} | mirror {'on' if mirror else 'off'} | "
         "q=quit | fingertip down + joint motion = strike"
     )
+    if backing_label:
+        subtitle += f" | backing {backing_label}"
     put_text_shadow(frame, subtitle, (26, 86), 0.55, (230, 230, 230), 1)
 
     strike_events = [(exp, txt, col) for exp, txt, col in strike_events if exp > t]
@@ -440,6 +473,27 @@ def main() -> int:
             cooldown_s=args.cooldown,
         )
         det = None
+
+    backing_label = ""
+    backing_started = False
+    if args.backing_track.strip():
+        backing_path = resolve_user_path(args.backing_track.strip())
+        if not backing_path.is_file():
+            raise SystemExit(f"Backing track not found: {backing_path}")
+        try:
+            pygame.mixer.music.load(str(backing_path))
+            pygame.mixer.music.set_volume(max(0.0, min(1.0, float(args.backing_volume))))
+            pygame.mixer.music.play(loops=-1 if args.backing_loop else 0)
+            backing_started = True
+            backing_label = backing_path.name
+            print(
+                f"Backing track: {backing_path} "
+                f"(volume={max(0.0, min(1.0, float(args.backing_volume))):.2f}, "
+                f"loop={'on' if args.backing_loop else 'off'})",
+                flush=True,
+            )
+        except pygame.error as exc:
+            raise SystemExit(f"Could not play backing track {backing_path}: {exc}") from exc
 
     cap = cv2.VideoCapture(args.camera)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
@@ -633,6 +687,7 @@ def main() -> int:
                 strike_events=strike_events,
                 t=t,
                 mirror=not args.no_mirror,
+                backing_label=backing_label,
             )
             cv2.imshow(title, canvas)
             run_elapsed = time.perf_counter() - run_t0
@@ -651,6 +706,8 @@ def main() -> int:
             if args.auto_quit_after > 0 and run_elapsed >= args.auto_quit_after:
                 break
     finally:
+        if backing_started:
+            pygame.mixer.music.stop()
         cap.release()
         cv2.destroyAllWindows()
         tracker.close()

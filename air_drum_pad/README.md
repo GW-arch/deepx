@@ -62,6 +62,28 @@ python3 main.py --backend npu --piano --camera 0 \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json
 ```
 
+### 데모 비디오용 쉬운 드럼 런처
+
+`demo_run.py`는 드럼 모드를 켜고 배경 트랙을 함께 재생합니다. 저작권 음악 파일은 포함하지 않으므로, 실제 Queen 곡을 쓰려면 본인이 가진 합법적인 오디오 파일을 지정하세요.
+
+```bash
+# 실제 배경음악 파일과 함께 실행
+python3 demo_run.py --camera 0 --backing-track ~/Music/we_will_rock_you.mp3
+
+# 오디오 파일이 없으면 royalty-free "stomp stomp clap" 가이드 루프를 자동 생성
+python3 demo_run.py --camera 0
+
+# 패턴만 확인
+python3 demo_run.py --print-pattern
+```
+
+기본 데모 패턴은 80 BPM 기준:
+
+```text
+Count:  1   &   2   &   3   &   4   &
+Pads:   kick kick snare -   kick kick snare -
+```
+
 > **스크립트로 실행:** `scripts/run_cpu_piano.sh`, `scripts/run_npu_piano.sh`(dual-halves), `scripts/run_npu_full_piano.sh`(Palm+Hand 정식 파이프라인, correction 자동 적용 가능)를 사용하면 환경변수(`DISPLAY`, `XAUTHORITY`)를 자동으로 설정합니다.
 
 ### CPU vs CPU+NPU 비교
