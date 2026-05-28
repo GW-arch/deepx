@@ -119,7 +119,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--relative-tip-drop",
         type=float,
-        default=0.015,
+        default=0.010,
         help=(
             "Target fingertip must be this much lower than the mean y of the other fingertips. "
             "Raises strike intent threshold beyond simple velocity."

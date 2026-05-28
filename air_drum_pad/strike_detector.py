@@ -145,7 +145,7 @@ class InstrumentStrikeDetector:
         cooldown_s: float = 0.10,
         min_tip_disp: float = 0.008,
         relative_vy_scale: float = 0.30,
-        relative_tip_drop: float = 0.015,
+        relative_tip_drop: float = 0.010,
         min_conf: float = 0.5,
         max_hands: int = 2,
         sound_mapper: Optional[Callable[[int, int], str]] = None,
@@ -301,7 +301,7 @@ class PadStrikeDetector:
         joint_dps_trigger: float = 16.0,
         cooldown_s: float = 0.10,
         relative_vy_scale: float = 0.30,
-        relative_tip_drop: float = 0.015,
+        relative_tip_drop: float = 0.010,
         min_conf: float = 0.5,
     ) -> None:
         self.pads = list(pads)

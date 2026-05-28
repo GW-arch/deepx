@@ -74,9 +74,15 @@ class _LandmarkSmoother:
     fast movements (adaptive alpha: fast motion → less smoothing).
     """
 
-    def __init__(self, alpha: float = 0.15, velocity_scale: float = 4.0) -> None:
+    def __init__(
+        self,
+        alpha: float = 0.15,
+        velocity_scale: float = 8.0,
+        max_alpha: float = 0.75,
+    ) -> None:
         self._alpha = alpha
         self._vel_scale = velocity_scale
+        self._max_alpha = max(alpha, min(1.0, max_alpha))
         # Keyed by a stable hand-side bucket → (21, 3) array
         self._prev: dict[int, np.ndarray] = {}
 
@@ -88,13 +94,18 @@ class _LandmarkSmoother:
             self._prev[hand_idx] = cur.copy()
             return lm21
 
-        # Adaptive alpha: increase alpha (less smoothing) when moving fast
-        delta = np.abs(cur[:, :2] - prev[:, :2])
-        speed = np.mean(delta)
-        # alpha ranges from self._alpha (still) to ~1.0 (fast movement)
-        a = min(1.0, self._alpha + speed * self._vel_scale)
+        # Adaptive per-landmark alpha: stationary points stay heavily smoothed,
+        # while an actively moving fingertip remains responsive.  A single
+        # global alpha lets one moving hand/finger reduce smoothing for every
+        # landmark, making the supposedly still skeleton visibly wiggle.
+        speed = np.linalg.norm(cur[:, :2] - prev[:, :2], axis=1)
+        alpha = np.clip(
+            self._alpha + speed * self._vel_scale,
+            self._alpha,
+            self._max_alpha,
+        )
 
-        smoothed = prev + a * (cur - prev)
+        smoothed = prev + alpha[:, None] * (cur - prev)
         self._prev[hand_idx] = smoothed.copy()
         return tuple(
             _Lm(float(smoothed[j, 0]), float(smoothed[j, 1]), float(smoothed[j, 2]))
@@ -424,7 +435,7 @@ class DxnnHandTracker:
         self._h, self._w, self._layout_hw = _infer_nhwc(self._shape, override, inp_cfg)
         self._dual_halves = bool(self._layout.get("inference", {}).get("dual_horizontal_halves", False))
         self._square_pad = bool(inp_cfg.get("square_pad", False))
-        self._smoother = _LandmarkSmoother(alpha=0.15, velocity_scale=4.0)
+        self._smoother = _LandmarkSmoother(alpha=0.15, velocity_scale=8.0, max_alpha=0.75)
 
     def _effective_input_layout(self, inp_cfg: dict[str, Any]) -> str:
         """
@@ -845,7 +856,7 @@ class FullNpuHandsTracker:
         self._palm_future: Future[tuple[np.ndarray, float]] | None = None
         # Public per-frame timing snapshot for benchmark tools.
         self.last_profile: dict[str, Any] = {}
-        self._smoother = _LandmarkSmoother(alpha=0.4, velocity_scale=10.0)
+        self._smoother = _LandmarkSmoother(alpha=0.18, velocity_scale=8.0, max_alpha=0.75)
         self._landmark_corrector = (
             _LandmarkCorrector(landmark_correction_path)
             if landmark_correction_path and str(landmark_correction_path).strip()
