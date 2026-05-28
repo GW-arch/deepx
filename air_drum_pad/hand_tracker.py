@@ -857,6 +857,12 @@ class FullNpuHandsTracker:
         # Public per-frame timing snapshot for benchmark tools.
         self.last_profile: dict[str, Any] = {}
         self._smoother = _LandmarkSmoother(alpha=0.18, velocity_scale=8.0, max_alpha=0.75)
+        # Fixed demo prior: two hands stay on left/right screen sides and face
+        # roughly the same direction.  This is not a retrained palm model; it is
+        # a post-detection stabilizer that prevents one side from stealing a
+        # duplicate detection and damps palm-ROI rotation/center jitter.
+        self._fixed_two_hand_prior = self._max_hands >= 2
+        self._stable_palm_rois: dict[int, tuple[float, float, float, float]] = {}
         self._landmark_corrector = (
             _LandmarkCorrector(landmark_correction_path)
             if landmark_correction_path and str(landmark_correction_path).strip()
@@ -909,6 +915,66 @@ class FullNpuHandsTracker:
         t0 = time.perf_counter()
         dets = self._run_palm(rgb)
         return dets, (time.perf_counter() - t0) * 1000.0
+
+    def _select_palm_detections(self, dets: np.ndarray) -> np.ndarray:
+        """Apply a fixed left/right two-hand prior to palm detections.
+
+        For the PANDA demo posture, hands are expected to remain one per screen
+        side.  Keeping only the best detection on each side reduces duplicate
+        boxes on the moving hand from being interpreted as the stationary hand.
+        """
+        if dets.shape[0] == 0:
+            return dets
+        if not self._fixed_two_hand_prior:
+            order = np.argsort(-dets[:, 0])
+            return dets[order[: self._max_hands]]
+
+        from palm_decode import DET_XMAX_IDX, DET_XMIN_IDX
+
+        selected: list[np.ndarray] = []
+        used: set[int] = set()
+        for side in (0, 1):
+            side_candidates: list[tuple[float, int]] = []
+            for idx, det in enumerate(dets):
+                cx_norm = (float(det[DET_XMIN_IDX]) + float(det[DET_XMAX_IDX])) * 0.5
+                if (cx_norm < 0.5) == (side == 0):
+                    side_candidates.append((float(det[0]), idx))
+            if side_candidates:
+                _score, best_idx = max(side_candidates, key=lambda item: item[0])
+                selected.append(dets[best_idx])
+                used.add(best_idx)
+
+        # If only one side is visible, return only that side.  Filling the
+        # missing side with a second same-side detection is a common source of
+        # ghost skeletons and cross-hand strikes.
+        if selected:
+            selected.sort(key=lambda det: (float(det[DET_XMIN_IDX]) + float(det[DET_XMAX_IDX])) * 0.5)
+            return np.stack(selected, axis=0)
+
+        order = np.argsort(-dets[:, 0])
+        return dets[order[:1]]
+
+    def _stabilize_palm_roi(
+        self,
+        roi: tuple[float, float, float, float],
+        side_key: int,
+    ) -> tuple[float, float, float, float]:
+        """Temporally smooth palm-derived ROI center/size/rotation."""
+        prev = self._stable_palm_rois.get(side_key)
+        if prev is None:
+            self._stable_palm_rois[side_key] = roi
+            return roi
+
+        alpha = 0.25
+        cx = prev[0] + alpha * (roi[0] - prev[0])
+        cy = prev[1] + alpha * (roi[1] - prev[1])
+        sz = prev[2] + alpha * (roi[2] - prev[2])
+        # Circular interpolation for angle; avoids jumps around +/-pi.
+        dtheta = math.atan2(math.sin(roi[3] - prev[3]), math.cos(roi[3] - prev[3]))
+        rot = prev[3] + alpha * dtheta
+        out = (cx, cy, sz, rot)
+        self._stable_palm_rois[side_key] = out
+        return out
 
     def _schedule_async_palm(self, rgb: np.ndarray) -> None:
         """Start one background palm pass if async mode is enabled and idle."""
@@ -1006,15 +1072,16 @@ class FullNpuHandsTracker:
         if dets.shape[0] == 0:
             return [], []
 
-        # Sort by score descending, take top max_hands
-        order = np.argsort(-dets[:, 0])
-        dets = dets[order[: self._max_hands]]
+        dets = self._select_palm_detections(dets)
 
         lms_list: list[_HandLms] = []
         new_rois: list[tuple[float, float, float, float]] = []
         for det in dets:
             t_hand0 = time.perf_counter()
-            patch, cx, cy, sz, rot = self._extract_roi(rgb, det, out_size=224)
+            cx, cy, sz, rot = self._palm_det_to_roi(det, iw, ih, target_size=224)
+            side_key = 0 if cx < iw * 0.5 else 1
+            cx, cy, sz, rot = self._stabilize_palm_roi((cx, cy, sz, rot), side_key)
+            patch = self._warp_roi(rgb, cx, cy, sz, rot, out_size=224)
             result = self._hand_tracker.process(patch)
             if not result.multi_hand_landmarks:
                 profile["hand_ms"] += (time.perf_counter() - t_hand0) * 1000.0
