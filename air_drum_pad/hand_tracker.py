@@ -1018,24 +1018,27 @@ class FullNpuHandsTracker:
         """
         xs = [lm21[i].x * iw for i in range(21)]
         ys = [lm21[i].y * ih for i in range(21)]
-        # Rotation from wrist to middle finger MCP
+        # Rotation from wrist to middle finger MCP, matching MediaPipe's
+        # target-angle convention for palm/hand ROIs.
         wx, wy = lm21[0].x * iw, lm21[0].y * ih
         mx, my = lm21[9].x * iw, lm21[9].y * ih
-        rotation = math.atan2(my - wy, mx - wx) - math.pi / 2.0
+        rotation = math.pi / 2.0 - math.atan2(-(my - wy), mx - wx)
 
         # Bounding box of all landmarks
         xmin, xmax = min(xs), max(xs)
         ymin, ymax = min(ys), max(ys)
         cx = (xmin + xmax) * 0.5
         cy = (ymin + ymax) * 0.5
-        long_side = max(xmax - xmin, ymax - ymin)
+        box_w = xmax - xmin
+        box_h = ymax - ymin
+        long_side = max(box_w, box_h)
 
         # Expand like MediaPipe (2.0x bounding box)
         roi_size = long_side * 2.0
         # Shift center slightly towards fingers (up along hand axis)
-        shift_px = roi_size * (-0.1)
-        cx += shift_px * math.sin(rotation)
-        cy -= shift_px * math.cos(rotation)
+        shift_y = -0.1
+        cx -= box_h * shift_y * math.sin(rotation)
+        cy += box_h * shift_y * math.cos(rotation)
         return cx, cy, roi_size, rotation
 
     def _run_hand_from_roi(

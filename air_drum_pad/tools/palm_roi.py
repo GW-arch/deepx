@@ -61,10 +61,15 @@ def palm_detection_to_roi(
     mf_x = float(detection[DET_KP_OFFSET + PALM_KP_MIDDLE_MCP * 2])
     mf_y = float(detection[DET_KP_OFFSET + PALM_KP_MIDDLE_MCP * 2 + 1])
 
-    # Rotation: angle from wrist to middle-finger MCP
+    # Rotation: MediaPipe aligns the wrist→middle-MCP vector to the ROI Y axis.
+    # Equivalent to DetectionsToRectsCalculator with
+    # rotation_vector_target_angle_degrees: 90.  Image y grows downward, hence
+    # the negated dy inside atan2.  The previous atan2(dy, dx) - pi/2 form was
+    # 180° off for an upright hand, causing the hand-landmark model to see an
+    # upside-down crop and produce poor fingertip endpoints.
     dx = (mf_x - wrist_x) * image_w
     dy = (mf_y - wrist_y) * image_h
-    rotation = math.atan2(dy, dx) - math.pi / 2.0  # hand points "up"
+    rotation = math.pi / 2.0 - math.atan2(-dy, dx)
 
     # Box from detection bounding box (ymin, xmin, ymax, xmax)
     from palm_decode import DET_YMIN_IDX, DET_XMIN_IDX, DET_YMAX_IDX, DET_XMAX_IDX
@@ -79,15 +84,14 @@ def palm_detection_to_roi(
     box_w = xmax - xmin
     box_h = ymax - ymin
 
-    # Long side as base size
+    # Apply RectTransformation-style shift before scaling/squaring.  shift_y is
+    # expressed in detection-box height and negative values move toward the
+    # fingers for an upright hand.
+    center_x = box_cx - box_h * shift_y * math.sin(rotation)
+    center_y = box_cy + box_h * shift_y * math.cos(rotation)
+
+    # Apply square_long + scale_x/scale_y.
     long_side = max(box_w, box_h)
-
-    # Apply shift along hand direction (shift_y moves along the hand axis)
-    shift_px = long_side * shift_y
-    center_x = box_cx + shift_px * math.sin(rotation)
-    center_y = box_cy - shift_px * math.cos(rotation)
-
-    # Apply scale
     roi_size = long_side * max(scale_x, scale_y)
 
     return center_x, center_y, roi_size, rotation
