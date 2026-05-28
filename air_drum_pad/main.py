@@ -241,11 +241,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--landmark-correction",
         type=str,
-        default="models/npu_landmark_correction.dataset.json",
+        default="models/npu_landmark_correction.bias.json",
         metavar="PATH",
         help=(
-            "npu-full: CPU baseline 기준으로 학습한 NPU landmark affine 보정 JSON "
-            "(기본: models/npu_landmark_correction.dataset.json, 빈 문자열로 비활성화). "
+            "npu-full: CPU baseline 기준으로 학습한 NPU landmark xy 보정 JSON "
+            "(기본: models/npu_landmark_correction.bias.json, 빈 문자열로 비활성화). "
             "tools/calibrate_npu_landmarks.py 로 생성."
         ),
     )

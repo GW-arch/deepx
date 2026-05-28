@@ -118,6 +118,10 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --async-palm --frame-interval-ms 16.7
 python3 tools/calibrate_npu_landmarks.py \
+  --kind bias --output models/npu_landmark_correction.bias.json
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --landmark-correction models/npu_landmark_correction.bias.json
+python3 tools/calibrate_npu_landmarks.py \
   --output models/npu_landmark_correction.dataset.json
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --landmark-correction models/npu_landmark_correction.dataset.json
@@ -139,14 +143,21 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 | Right | 90 | 0.0270 | 0.0336 | 0.0532 | 0.1593 |
 | Left | 83 | 0.0256 | 0.0353 | 0.0457 | 0.0734 |
 
-NPU landmark affine 보정(`models/npu_landmark_correction.dataset.json`) 적용 후, 같은 90프레임 training set:
+NPU landmark bias 보정(`models/npu_landmark_correction.bias.json`) 적용 후, 같은 90프레임 training set:
+
+| 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
+|----|-----------:|---------------:|--------------:|---------:|---------:|
+| Right | 90 | **0.0120** | **0.0128** | **0.0245** | 0.1735 |
+| Left | 83 | **0.0111** | **0.0113** | **0.0220** | **0.0473** |
+
+더 공격적인 NPU landmark affine 보정(`models/npu_landmark_correction.dataset.json`) 적용 후:
 
 | 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
 |----|-----------:|---------------:|--------------:|---------:|---------:|
 | Right | 90 | **0.0102** | **0.0112** | **0.0223** | 0.1701 |
 | Left | 83 | **0.0092** | **0.0090** | **0.0193** | **0.0437** |
 
-> 보정은 평균/손끝 오차를 약 60% 이상 줄이므로 현재 live demo 기본값으로 활성화했습니다. 다만 위 수치는 동일 dataset에 fit/eval한 결과이므로, 제출 전 별도 capture set으로 hold-out 검증이 필요합니다.
+> 보정은 평균/손끝 오차를 약 60% 이상 줄입니다. 현재 live demo 기본값은 `models/npu_landmark_correction.bias.json`입니다. Affine 보정은 offline 평균 오차가 조금 더 낮지만 live skeleton shape를 과도하게 왜곡할 수 있어 기본값에서 제외했습니다. 위 수치는 동일 dataset에 fit/eval한 결과이므로, 제출 전 별도 capture set으로 hold-out 검증이 필요합니다.
 
 CSV/JSON 저장:
 

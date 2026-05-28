@@ -1214,7 +1214,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--hand-tflite", type=str, default="")
     p.add_argument("--palm-redetect-every", type=int, default=0)
     p.add_argument("--async-palm", action="store_true")
-    p.add_argument("--landmark-correction", type=str, default="models/npu_landmark_correction.dataset.json")
+    p.add_argument("--landmark-correction", type=str, default="models/npu_landmark_correction.bias.json")
     return p.parse_args(argv)
 
 
