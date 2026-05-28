@@ -37,6 +37,13 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
         ),
     )
     p.add_argument("--camera", type=int, default=0)
+    p.add_argument(
+        "--backend",
+        type=str,
+        default="cpu",
+        choices=("cpu", "cpu-baseline", "npu", "npu-full"),
+        help="Tracking backend for the demo launcher; default cpu is most accurate.",
+    )
     p.add_argument("--backing-track", type=str, default="", metavar="PATH")
     p.add_argument("--backing-volume", type=float, default=0.35)
     p.add_argument("--loop", action="store_true", help="Loop the backing track.")
@@ -246,6 +253,8 @@ def main() -> int:
         str(SCRIPT_DIR / "main.py"),
         "--camera",
         str(args.camera),
+        "--backend",
+        args.backend,
     ]
     if not args.no_demo_pads and "--drum-pads" not in passthrough:
         cmd += ["--drum-pads", str(DEMO_PADS_PATH)]

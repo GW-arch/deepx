@@ -2,7 +2,9 @@
 """
 AI Air-Drum Pad — 손가락 관절·손끝 추적으로 실제 악기를 치는 것처럼 타격 감지.
 
-DeepX M1: default live path uses the final CPU-palm + NPU hand-landmark (`npu-full`) pipeline with the same guided-style interface used by the evaluator.
+Default live demo path uses CPU MediaPipe for the most accurate fingertip
+endpoints.  NPU backends remain available explicitly for experiments and
+benchmarks.
 """
 from __future__ import annotations
 
@@ -218,9 +220,13 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--backend",
         type=str,
-        default="npu-full",
+        default="cpu",
         choices=("cpu", "cpu-baseline", "npu", "npu-full"),
-        help="손 추론: cpu=MediaPipe, cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, npu-full=palm TFLite + hand .dxnn (default)",
+        help=(
+            "손 추론: cpu=MediaPipe(default, demo accuracy), "
+            "cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, "
+            "npu-full=palm TFLite + hand .dxnn"
+        ),
     )
     p.add_argument(
         "--dxnn",
