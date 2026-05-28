@@ -647,7 +647,7 @@ def main() -> int:
                             )
                     else:
                         assert pad_det is not None
-                        hit_pad = pad_det.update_finger(hand_idx, fid, t, hand_lms, conf)
+                        hit_pad = pad_det.update_finger(hand_side, fid, t, hand_lms, conf)
                         if hit_pad:
                             if hit_pad.sound_key in kit:
                                 kit[hit_pad.sound_key].play()

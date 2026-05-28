@@ -77,7 +77,7 @@ class _LandmarkSmoother:
     def __init__(self, alpha: float = 0.15, velocity_scale: float = 4.0) -> None:
         self._alpha = alpha
         self._vel_scale = velocity_scale
-        # Keyed by hand index (sorted position) → (21, 3) array
+        # Keyed by a stable hand-side bucket → (21, 3) array
         self._prev: dict[int, np.ndarray] = {}
 
     def smooth(self, hand_idx: int, lm21: tuple) -> tuple:
@@ -1155,9 +1155,17 @@ class FullNpuHandsTracker:
                 handed[0] = _Handedness("Right", handed[0].classification[0].score)
                 handed[1] = _Handedness("Left", handed[1].classification[0].score)
 
-        # Apply EMA smoothing to reduce NPU INT8 jitter
+        # Apply EMA smoothing to reduce NPU INT8 jitter.  Key the smoother by
+        # screen-side instead of list index so a temporarily single detected
+        # right hand does not inherit the previous left-hand state (or vice
+        # versa), which can create large false velocities and ghost strikes.
+        used_smoother_keys: set[int] = set()
         for i, hlm in enumerate(lms_list):
-            smoothed = self._smoother.smooth(i, hlm.landmark)
+            side_key = 0 if hlm.landmark[0].x < 0.5 else 1
+            if side_key in used_smoother_keys:
+                side_key = 10 + i
+            used_smoother_keys.add(side_key)
+            smoothed = self._smoother.smooth(side_key, hlm.landmark)
             lms_list[i] = _HandLms(smoothed)
 
         if self._landmark_corrector is not None:

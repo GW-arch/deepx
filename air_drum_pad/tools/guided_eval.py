@@ -973,7 +973,8 @@ def run_live(args: argparse.Namespace) -> int:
                         frame_candidates.append((label, detail, label))
                     else:
                         assert pad_det is not None
-                        hit_pad = pad_det.update_finger(hand_idx, fid, elapsed, hand_lms, conf)
+                        mapped_hand_idx = physical_side_by_hand.get(hand_idx, hand_idx)
+                        hit_pad = pad_det.update_finger(mapped_hand_idx, fid, elapsed, hand_lms, conf)
                         if not hit_pad:
                             continue
                         label = normalize_label(hit_pad.label, mode)

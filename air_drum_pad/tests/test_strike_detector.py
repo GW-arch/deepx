@@ -50,6 +50,21 @@ def _hand_with_tip_pose(tip_id: int, tip_y: float, tip_x: float) -> _Hand:
     return _Hand(lms)
 
 
+def _translated_hand_with_index_pose(
+    *,
+    wrist_y: float,
+    tip_y: float,
+    tip_x: float,
+) -> _Hand:
+    """Index pose with explicit wrist y for whole-hand ghost-strike tests."""
+    lms = [_Lm() for _ in range(21)]
+    lms[0] = _Lm(0.50, wrist_y)
+    lms[5] = _Lm(0.40, wrist_y - 0.10)
+    lms[6] = _Lm(0.50, wrist_y)
+    lms[8] = _Lm(tip_x, tip_y)
+    return _Hand(lms)
+
+
 class StrikeDetectorTests(unittest.TestCase):
     def test_default_sound_mapping_uses_hand_and_finger_slot(self) -> None:
         self.assertEqual(sound_key_for_finger(0, FINGERTIP_INDICES[0]), "kick")
@@ -91,6 +106,38 @@ class StrikeDetectorTests(unittest.TestCase):
         hit = det.update_finger(0, 8, 0.1, _hand_with_index_pose(0.62, 0.75), 1.0)
 
         self.assertEqual(hit, ("h0_index", "snare"))
+
+    def test_update_finger_rejects_whole_hand_translation_ghost(self) -> None:
+        det = InstrumentStrikeDetector(
+            vy_trigger=0.10,
+            joint_dps_trigger=1.0,
+            cooldown_s=0.0,
+            min_tip_disp=0.0,
+            min_conf=0.0,
+            sound_mapper=lambda _h, _lm: "snare",
+        )
+
+        self.assertIsNone(
+            det.update_finger(
+                0,
+                8,
+                0.0,
+                _translated_hand_with_index_pose(wrist_y=0.50, tip_y=0.60, tip_x=0.60),
+                1.0,
+            )
+        )
+        # Fingertip moves down in image space and the angle changes, but the
+        # wrist moves down by the same amount.  This is a whole-hand/model jump,
+        # not a local finger strike.
+        self.assertIsNone(
+            det.update_finger(
+                0,
+                8,
+                0.1,
+                _translated_hand_with_index_pose(wrist_y=0.55, tip_y=0.65, tip_x=0.72),
+                1.0,
+            )
+        )
 
     def test_middle_finger_uses_more_sensitive_threshold(self) -> None:
         base_args = dict(
@@ -177,6 +224,35 @@ class StrikeDetectorTests(unittest.TestCase):
         self.assertEqual(
             det.update_finger(0, 8, 0.1, _hand_with_index_pose(0.62, 0.75), 1.0),
             pad,
+        )
+
+    def test_pad_strike_detector_rejects_whole_hand_translation_ghost(self) -> None:
+        pad = PadZone("clap", "clap", 0.50, 0.50, 0.90, 0.90, (10, 20, 30))
+        det = PadStrikeDetector(
+            [pad],
+            vy_trigger=0.10,
+            joint_dps_trigger=1.0,
+            cooldown_s=0.0,
+            min_conf=0.0,
+        )
+
+        self.assertIsNone(
+            det.update_finger(
+                1,
+                8,
+                0.0,
+                _translated_hand_with_index_pose(wrist_y=0.50, tip_y=0.60, tip_x=0.60),
+                1.0,
+            )
+        )
+        self.assertIsNone(
+            det.update_finger(
+                1,
+                8,
+                0.1,
+                _translated_hand_with_index_pose(wrist_y=0.55, tip_y=0.65, tip_x=0.72),
+                1.0,
+            )
         )
 
     def test_pad_strike_detector_ignores_hits_outside_pad_and_enforces_cooldown(self) -> None:

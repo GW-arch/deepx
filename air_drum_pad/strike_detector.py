@@ -138,6 +138,7 @@ class InstrumentStrikeDetector:
         joint_dps_trigger: float = 16.0,
         cooldown_s: float = 0.10,
         min_tip_disp: float = 0.008,
+        relative_vy_scale: float = 0.30,
         min_conf: float = 0.5,
         max_hands: int = 2,
         sound_mapper: Optional[Callable[[int, int], str]] = None,
@@ -146,6 +147,7 @@ class InstrumentStrikeDetector:
         self.joint_dps_trigger = joint_dps_trigger
         self.cooldown_s = cooldown_s
         self.min_tip_disp = min_tip_disp
+        self.relative_vy_scale = relative_vy_scale
         self.min_conf = min_conf
         self.max_hands = max_hands
         if sound_mapper is not None:
@@ -158,6 +160,7 @@ class InstrumentStrikeDetector:
             self._sound_mapper = _default_map
         self._prev_y: dict[tuple[int, int], float] = {}
         self._prev_x: dict[tuple[int, int], float] = {}
+        self._prev_rel_y: dict[tuple[int, int], float] = {}
         self._prev_t: dict[tuple[int, int], float] = {}
         self._prev_angle: dict[tuple[int, int], float] = {}
         self._last_hit: dict[tuple[int, int], float] = {}
@@ -166,6 +169,7 @@ class InstrumentStrikeDetector:
     def reset(self) -> None:
         self._prev_y.clear()
         self._prev_x.clear()
+        self._prev_rel_y.clear()
         self._prev_t.clear()
         self._prev_angle.clear()
         self._last_hit.clear()
@@ -186,12 +190,15 @@ class InstrumentStrikeDetector:
         vk = (hand_id, tip_id)
         if conf < self.min_conf:
             self._prev_y.pop(vk, None)
+            self._prev_rel_y.pop(vk, None)
             self._prev_t.pop(vk, None)
             self._prev_angle.pop(vk, None)
             return None
 
         tip = hand_lms.landmark[tip_id]
         nx, ny = tip.x, tip.y
+        wrist = hand_lms.landmark[0]
+        rel_y = ny - wrist.y
 
         dt = 1e-4
         if vk in self._prev_t:
@@ -199,6 +206,9 @@ class InstrumentStrikeDetector:
         vy = 0.0
         if vk in self._prev_y:
             vy = (ny - self._prev_y[vk]) / dt
+        rel_vy = 0.0
+        if vk in self._prev_rel_y:
+            rel_vy = (rel_y - self._prev_rel_y[vk]) / dt
 
         joint_dps = 0.0
         if tip_id in FINGER_ANGLE_CHAIN:
@@ -210,6 +220,7 @@ class InstrumentStrikeDetector:
             self._prev_angle[vk] = ang
 
         self._prev_y[vk] = ny
+        self._prev_rel_y[vk] = rel_y
         self._prev_t[vk] = t_s
 
         # 아래로 빠른 내리침 + 관절이 동시에 움직임 (펴짐/절곡 급변)
@@ -218,9 +229,12 @@ class InstrumentStrikeDetector:
             self.joint_dps_trigger * FINGER_JOINT_DPS_TRIGGER_SCALE.get(tip_id, 1.0)
         )
         tip_ok = vy >= tip_threshold
+        # Reject whole-hand/model-origin jumps: a true finger hit should move
+        # the fingertip downward at least a little relative to the wrist.
+        rel_tip_ok = rel_vy >= tip_threshold * self.relative_vy_scale
         joint_ok = abs(joint_dps) >= joint_threshold
 
-        if not (tip_ok and joint_ok):
+        if not (tip_ok and rel_tip_ok and joint_ok):
             return None
 
         # Minimum displacement since last hit — reject jitter/noise
@@ -272,20 +286,24 @@ class PadStrikeDetector:
         vy_trigger: float = 0.025,
         joint_dps_trigger: float = 16.0,
         cooldown_s: float = 0.10,
+        relative_vy_scale: float = 0.30,
         min_conf: float = 0.5,
     ) -> None:
         self.pads = list(pads)
         self.vy_trigger = vy_trigger
         self.joint_dps_trigger = joint_dps_trigger
         self.cooldown_s = cooldown_s
+        self.relative_vy_scale = relative_vy_scale
         self.min_conf = min_conf
         self._prev_y: dict[tuple[int, int], float] = {}
+        self._prev_rel_y: dict[tuple[int, int], float] = {}
         self._prev_t: dict[tuple[int, int], float] = {}
         self._prev_angle: dict[tuple[int, int], float] = {}
         self._pad_last_hit: dict[str, float] = {}
 
     def reset(self) -> None:
         self._prev_y.clear()
+        self._prev_rel_y.clear()
         self._prev_t.clear()
         self._prev_angle.clear()
         self._pad_last_hit.clear()
@@ -302,12 +320,15 @@ class PadStrikeDetector:
         vk = (hand_id, tip_id)
         if conf < self.min_conf:
             self._prev_y.pop(vk, None)
+            self._prev_rel_y.pop(vk, None)
             self._prev_t.pop(vk, None)
             self._prev_angle.pop(vk, None)
             return None
 
         tip = hand_lms.landmark[tip_id]
         nx, ny = tip.x, tip.y
+        wrist = hand_lms.landmark[0]
+        rel_y = ny - wrist.y
 
         dt = 1e-4
         if vk in self._prev_t:
@@ -315,6 +336,9 @@ class PadStrikeDetector:
         vy = 0.0
         if vk in self._prev_y:
             vy = (ny - self._prev_y[vk]) / dt
+        rel_vy = 0.0
+        if vk in self._prev_rel_y:
+            rel_vy = (rel_y - self._prev_rel_y[vk]) / dt
 
         joint_dps = 0.0
         if tip_id in FINGER_ANGLE_CHAIN:
@@ -326,6 +350,7 @@ class PadStrikeDetector:
             self._prev_angle[vk] = ang
 
         self._prev_y[vk] = ny
+        self._prev_rel_y[vk] = rel_y
         self._prev_t[vk] = t_s
 
         tip_threshold = self.vy_trigger * FINGER_VY_TRIGGER_SCALE.get(tip_id, 1.0)
@@ -333,8 +358,12 @@ class PadStrikeDetector:
             self.joint_dps_trigger * FINGER_JOINT_DPS_TRIGGER_SCALE.get(tip_id, 1.0)
         )
         tip_ok = vy >= tip_threshold
+        # Reject ghost hits caused by the whole stationary hand/skeleton
+        # shifting when another hand moves: actual strikes should move the
+        # fingertip downward relative to the wrist, not only in image space.
+        rel_tip_ok = rel_vy >= tip_threshold * self.relative_vy_scale
         joint_ok = abs(joint_dps) >= joint_threshold
-        if not (tip_ok and joint_ok):
+        if not (tip_ok and rel_tip_ok and joint_ok):
             return None
 
         for pad in self.pads:
