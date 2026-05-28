@@ -220,12 +220,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--backend",
         type=str,
-        default="cpu",
+        default="npu-full",
         choices=("cpu", "cpu-baseline", "npu", "npu-full"),
         help=(
-            "손 추론: cpu=MediaPipe(default, demo accuracy), "
+            "손 추론: cpu=MediaPipe, "
             "cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, "
-            "npu-full=palm TFLite + hand .dxnn"
+            "npu-full=palm TFLite + hand .dxnn(default)"
         ),
     )
     p.add_argument(

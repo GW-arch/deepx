@@ -44,7 +44,7 @@ pip3 install -r requirements.txt
 ### 빠른 실행 (모드별)
 
 ```bash
-# ── 1) 기본 데모: CPU MediaPipe + guided-style windowed UI (손끝 정확도 우선) ──
+# ── 1) 기본: NPU-full(Palm CPU TFLite + Hand NPU .dxnn) + guided-style windowed UI ──
 python3 main.py --camera 0
 
 # 피아노:
@@ -53,8 +53,8 @@ python3 main.py --piano --camera 0
 # ── 2) CPU-baseline: Palm(CPU TFLite) + Hand(CPU TFLite) — NPU 없이 동일 커스텀 ROI 파이프라인 ──
 python3 main.py --backend cpu-baseline --piano --camera 0
 
-# ── 3) NPU-full: Palm CPU TFLite + Hand NPU .dxnn (실험/벤치마크용) ──
-python3 main.py --backend npu-full --piano --camera 0
+# ── 3) CPU MediaPipe: 데모 영상용 정확도 우선 fallback ──
+python3 main.py --backend cpu --piano --camera 0
 
 # ── 4) NPU dual-halves: 화면 반분할 근사 (가장 빠름, palm 없음) ──
 python3 main.py --backend npu --piano --camera 0 \
@@ -99,10 +99,10 @@ Tiny variation every 4th bar:
 
 | `--backend` | Palm Detection | Hand Landmark | 비고 |
 |-------------|----------------|---------------|------|
-| `cpu` (기본 데모) | CPU (MediaPipe 내장) | CPU (MediaPipe 내장) | 추가 파일 불필요, 손끝 정확도 우선 |
+| `cpu` | CPU (MediaPipe 내장) | CPU (MediaPipe 내장) | 추가 파일 불필요, 데모 영상용 손끝 정확도 우선 |
 | `cpu-baseline` | CPU (TFLite, float32) | CPU (TFLite, float32) | NPU 없이 npu-full과 동일 파이프라인 (비교 기준선) |
 | `npu` | 없음 (dual-halves 근사) | **NPU** (.dxnn, int8) | palm 검출 없이 화면 좌우 반분할 |
-| `npu-full` | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 정식 2-hand 파이프라인, 실험/벤치마크용 |
+| `npu-full` (기본) | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 정식 2-hand 파이프라인, guided-style UI 기본 |
 
 > **왜 palm은 CPU인가?** Palm detection .dxnn을 INT8 양자화하면 score head가 파괴됩니다 (ONNX↔NPU 상관 -0.11). DeepX NPU는 INT8 전용 가속기이므로 float32 실행이 불가능합니다. 따라서 palm은 TFLite(CPU, float32)로, hand landmark만 NPU(int8)로 실행하는 하이브리드가 최선입니다. 자세한 분석: [`models/README.md`](models/README.md).
 
@@ -134,7 +134,7 @@ python3 main.py --backend cpu-baseline \
 
 #### npu-full 사용 예시
 
-`npu-full`은 NPU 실험/벤치마크용 백엔드입니다. 실제 데모 기본값은 손끝 endpoint가 가장 안정적인 `cpu` MediaPipe 백엔드입니다. `npu-full` 실행 시 기본 hand `.dxnn`, layout JSON, palm TFLite, dataset-calibrated bias landmark correction JSON은 `models/vendor/`와 `models/`에서 자동으로 선택됩니다. 기본 화면은 selfie mirror이며, live UI는 guided evaluator와 같은 windowed PANDA title/yellow skeleton 스타일을 사용합니다.
+`npu-full`은 `main.py` 기본 백엔드입니다. 기본 hand `.dxnn`, layout JSON, palm TFLite, dataset-calibrated bias landmark correction JSON은 `models/vendor/`와 `models/`에서 자동으로 선택됩니다. 기본 화면은 selfie mirror이며, live UI는 guided evaluator와 같은 windowed PANDA title/yellow skeleton 스타일을 사용합니다. 데모 영상 촬영에서는 endpoint 정확도를 위해 `demo_run.py`가 별도로 `cpu` backend를 기본 사용합니다.
 
 ```bash
 python3 main.py --backend npu-full --max-hands 2
@@ -268,7 +268,7 @@ export XAUTHORITY="$HOME/.Xauthority"   # 파일이 있을 때
 
 | 파일 | 역할 |
 |------|------|
-| `main.py` | 카메라, 손 추적(`--backend`, 기본 `cpu`), guided-style hand skeleton/live overlay 표시 |
+| `main.py` | 카메라, 손 추적(`--backend`, 기본 `npu-full`), guided-style hand skeleton/live overlay 표시 |
 | `hand_tracker.py` | CPU(MediaPipe) / CPU-baseline(TFLite) / NPU(DX-RT `.dxnn`) 백엔드 — Palm TFLite(CPU) + Hand .dxnn(NPU) 또는 TFLite(CPU) |
 | `strike_detector.py` | `InstrumentStrikeDetector` / `PadStrikeDetector` — 손끝 속도 + 관절 각속도 |
 | `drumkit_audio.py` | 16종 합성 드럼 샘플과 피아노 합성음 |
