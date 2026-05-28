@@ -1189,7 +1189,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument(
         "--relative-tip-drop",
         type=float,
-        default=0.020,
+        default=0.015,
         help="Target fingertip must be this much lower than the mean y of the other fingertips.",
     )
     p.add_argument(
