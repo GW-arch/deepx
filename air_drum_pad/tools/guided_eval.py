@@ -12,6 +12,7 @@ truth needed for the project demo and report experiments.
 from __future__ import annotations
 
 import argparse
+import copy
 import csv
 import json
 import math
@@ -51,14 +52,13 @@ PIANO_DEFAULT_TARGETS: tuple[str, ...] = (
     "G5",
 )
 FINGER_HINTS: tuple[str, ...] = ("thumb", "index", "middle", "ring", "pinky")
-MIRRORED_FINGER_ID: dict[int, int] = {
+RIGHT_HAND_FINGER_ID: dict[int, int] = {
     4: 20,
     8: 16,
     12: 12,
     16: 8,
     20: 4,
 }
-
 
 @dataclass(frozen=True)
 class Cue:
@@ -231,11 +231,27 @@ def physical_side_from_screen_x(nx: float, *, mirror: bool) -> int:
     return 0 if nx >= 0.5 else 1
 
 
-def piano_finger_id_for_mapping(fid: int, *, mirror_finger_order: bool) -> int:
-    """Return physical piano finger id after mirrored-view finger remapping."""
-    if not mirror_finger_order:
+def piano_finger_id_for_mapping(
+    fid: int,
+    *,
+    hand_side: int = 1,
+    mirror_finger_order: bool,
+) -> int:
+    """Return physical piano finger id after right-hand-only remapping."""
+    if not mirror_finger_order or int(hand_side) != 1:
         return fid
-    return MIRRORED_FINGER_ID.get(fid, fid)
+    return RIGHT_HAND_FINGER_ID.get(fid, fid)
+
+
+def visual_landmarks_for_hand(hand_lms: Any, *, hand_side: int, mirror: bool) -> Any:
+    """Return landmarks in the displayed frame's coordinate system."""
+    _ = hand_side
+    if not mirror:
+        return hand_lms
+    out = copy.deepcopy(hand_lms)
+    for lm in out.landmark:
+        lm.x = 1.0 - float(lm.x)
+    return out
 
 
 def load_cues_json(path: str, mode: str) -> list[Cue]:
@@ -762,11 +778,7 @@ def run_live(args: argparse.Namespace) -> int:
     effective_max_hands = (
         1 if mode == "piano" and args.piano_hand != "both" else args.max_hands
     )
-    mirror_finger_order = (
-        mode == "piano"
-        and not args.no_mirror
-        and not args.no_flip_finger_order
-    )
+    mirror_finger_order = mode == "piano" and bool(args.flip_finger_order)
 
     output_dir = Path(args.output_dir) if args.output_dir.strip() else Path("eval_runs") / datetime.now().strftime(f"%Y%m%d_%H%M%S_{mode}")
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -795,7 +807,7 @@ def run_live(args: argparse.Namespace) -> int:
     if mode == "piano":
         sound_mapper = lambda h, lm, s=slots, mfo=mirror_finger_order: sound_key_for_finger(
             h,
-            piano_finger_id_for_mapping(lm, mirror_finger_order=mfo),
+            piano_finger_id_for_mapping(lm, hand_side=h, mirror_finger_order=mfo),
             max_hands=2,
             sound_slots=s,
         )
@@ -834,7 +846,12 @@ def run_live(args: argparse.Namespace) -> int:
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
-        landmark_correction=args.landmark_correction if args.landmark_correction.strip() else None,
+        landmark_correction=(
+            args.landmark_correction
+            if args.landmark_correction.strip()
+            and Path(args.landmark_correction).is_file()
+            else None
+        ),
     )
 
     title = "PANDA Guided Eval"
@@ -876,8 +893,11 @@ def run_live(args: argparse.Namespace) -> int:
             frame_id += 1
             if frame.shape[1] != args.width or frame.shape[0] != args.height:
                 frame = cv2.resize(frame, (args.width, args.height), interpolation=cv2.INTER_LINEAR)
+            raw_frame = frame
             if not args.no_mirror:
-                frame = cv2.flip(frame, 1)
+                frame = cv2.flip(raw_frame, 1)
+            else:
+                frame = raw_frame
 
             now = time.perf_counter()
             elapsed = now - start_t
@@ -892,9 +912,16 @@ def run_live(args: argparse.Namespace) -> int:
                 current_idx += 1
             current_target = cues[current_idx].target if current_idx < len(cues) else None
 
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            rgb = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2RGB)
             res = tracker.process(rgb)
-            landmarks_list = res.multi_hand_landmarks or []
+            landmarks_list = [
+                visual_landmarks_for_hand(
+                    hand_lms,
+                    hand_side=0,
+                    mirror=not args.no_mirror,
+                )
+                for hand_lms in (res.multi_hand_landmarks or [])
+            ]
             handedness_list = res.multi_handedness or []
             if mode == "piano" and args.piano_hand != "both":
                 forced_side = 0 if args.piano_hand == "left" else 1
@@ -939,6 +966,7 @@ def run_live(args: argparse.Namespace) -> int:
                         side_label = "L" if mapped_hand_idx == 0 else "R"
                         mapped_fid = piano_finger_id_for_mapping(
                             fid,
+                            hand_side=mapped_hand_idx,
                             mirror_finger_order=mirror_finger_order,
                         )
                         detail = f"{side_label}{hand_idx}:{FINGER_LABELS.get(mapped_fid, mapped_fid)}"
@@ -1167,9 +1195,14 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
         help="Piano guided targets to use when --targets is not supplied.",
     )
     p.add_argument(
+        "--flip-finger-order",
+        action="store_true",
+        help="Legacy experiment: enable right-hand-only mirrored piano finger-order correction.",
+    )
+    p.add_argument(
         "--no-flip-finger-order",
         action="store_true",
-        help="Disable mirrored-view piano finger-order remapping.",
+        help="Deprecated/no-op: finger-order correction is off by default.",
     )
     p.add_argument("--drum-pads", type=str, default="", help="Drum pad layout JSON")
 
@@ -1181,7 +1214,7 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--hand-tflite", type=str, default="")
     p.add_argument("--palm-redetect-every", type=int, default=0)
     p.add_argument("--async-palm", action="store_true")
-    p.add_argument("--landmark-correction", type=str, default="")
+    p.add_argument("--landmark-correction", type=str, default="models/npu_landmark_correction.dataset.json")
     return p.parse_args(argv)
 
 

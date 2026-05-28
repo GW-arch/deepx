@@ -45,8 +45,9 @@ The implemented project contributes:
 - A common strike detector using fingertip velocity plus joint angular velocity.
 - A pad-zone drum interface with configurable rectangular hit regions and visual flash feedback.
 - A piano interface with a corrected default mapping: left thumb `G4`, left pinky `C4`, right hand `C5–G5`.
-- A mirrored selfie-view display, enabled by default, so the performer's left/right hand motion matches the visible camera feed and on-screen targets.
+- A mirrored selfie-view display and guided-style windowed skeleton overlay, enabled by default, so the performer's left/right hand motion and visual feedback match the guided evaluator.
 - Generated interface diagrams for both modes.
+- A default `main.py` runtime that launches the final `npu-full` CPU+NPU model path when packaged models are available.
 - Report figures generated programmatically for system architecture, strike logic, and backend latency.
 - A repeatable validation pipeline covering mapping, detector behavior, pad validation, ROI helpers, and benchmark helpers.
 
@@ -104,7 +105,7 @@ A custom JSON piano layout example is also generated using the same default slot
 
 ### 2.2 Live Interface Screenshots
 
-Live screenshots were captured from the normal, non-guided runtime after the mirror-view update. The non-guided interface uses the same full-camera overlay style as the guided evaluator, but removes cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot uses the CPU+NPU `npu-full` backend and shows the pad-based performance interface with a mirrored camera feed, fingertip landmarks, and recent strike feedback. The piano screenshot shows the live hand-to-note interface with recent strike feedback overlaid on the camera view.
+The runtime interface screenshots use the normal, non-guided overlay on captured camera frames after the mirror-view and default-runtime updates. The default `main.py` path now starts the final CPU+NPU `npu-full` backend, uses the same hand-landmark model, layout files, and dataset-calibrated landmark correction used by the validated NPU path, and presents the same guided-style mirrored windowed interface without cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed and a simple yellow hand skeleton. The piano screenshot shows the live hand-to-note interface with the same skeleton-style visualization overlaid on the camera view.
 
 ![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored CPU+NPU interface.](figures/live_drum_interface.png)
 
@@ -223,18 +224,18 @@ The application supports four major backend configurations, including MediaPipe-
 |---------|----------------|----------------|--------------|
 | `cpu` | MediaPipe internal [1], [2] | MediaPipe internal [1], [2] | Simple CPU-only baseline |
 | `cpu-baseline` | CPU TFLite | CPU TFLite | Comparable pipeline without NPU |
-| `npu-full` | CPU TFLite | NPU `.dxnn` | Accurate palm pipeline with NPU hand inference |
+| `npu-full` | CPU TFLite | NPU `.dxnn` | Accurate palm pipeline with NPU hand inference; default `main.py` runtime |
 | `npu` | none / dual-halves approximation | NPU `.dxnn` | Fastest low-latency approximation |
 
-The NPU-full path is architecturally preferred for accurate hand localization, but CPU palm detection dominates latency. The dual-halves NPU mode is faster because it removes palm detection, but it is a geometric approximation and should be evaluated under the target camera setup.
+The NPU-full path is architecturally preferred for accurate hand localization and is the default runtime used by `main.py` when the packaged model files are present. The default also loads the dataset-calibrated NPU landmark-correction JSON when available, because the pre-collected replay dataset shows that it reduces mean normalized NPU landmark error versus the CPU TFLite reference. CPU palm detection still dominates latency. The dual-halves NPU mode is faster because it removes palm detection, but it is a geometric approximation and should be evaluated under the target camera setup.
 
 ### 5.2 User Interface
 
-The runtime display contains the camera feed, hand/finger landmark trails, and mode-specific overlays. The camera feed is mirrored by default, producing a selfie-style interface in which moving a hand leftward in physical space also moves it leftward on the screen. This small interface detail is important for playability: without the mirror flip, the performer must mentally invert left/right motion while aiming at drum pads or piano cues. A `--no-mirror` option remains available for camera setups that already provide mirrored input.
+The runtime display contains the camera feed, a guided-evaluator-style yellow hand skeleton, fingertip points, and mode-specific overlays. It is windowed by default, matching the guided evaluator, with fullscreen available only by explicit option. Accuracy checks on the pre-collected replay dataset showed that running inference on the raw camera frame preserves the model's right-hand thumb-to-pinky identity better than running inference on an already mirrored frame. Therefore, the final interface runs palm and hand-landmark inference on the raw frame, then mirrors only the displayed image and landmark coordinates for the selfie view. This produces an interface in which moving a hand leftward in physical space also moves it leftward on the screen, while the anatomical thumb/pinky landmark order is not reversed by the display transform. A `--no-mirror` option remains available for camera setups that already provide mirrored input.
 
-In drum mode, rectangles are drawn directly on the mirrored camera feed and flash briefly when hit. In piano mode, the note mapping is tied to a mirror-aware physical left/right estimate rather than raw tracker hand order or raw MediaPipe handedness. This keeps the user-specified left-hand and right-hand note ranges stable even when the camera feed is flipped for the performer and even when the hand tracker changes the order of detected hands.
+In drum mode, rectangles are drawn directly on the mirrored camera feed and flash briefly when hit; hit testing uses the same display-transformed landmark coordinates, so pad locations match what the performer sees. In piano mode, the note mapping is tied to a mirror-aware physical left/right estimate rather than raw tracker hand order or raw MediaPipe handedness. This keeps the user-specified left-hand and right-hand note ranges stable even when the camera feed is flipped for the performer and even when the hand tracker changes the order of detected hands.
 
-The piano interface also applies a mirror-aware finger-order correction for note mapping. During guided right-hand trials, the mirrored landmark model could treat the physical right hand as if it were the opposite hand, causing the physical pinky to map to the thumb note. The implemented correction swaps thumb with pinky and index with ring for mirrored piano mapping while leaving the raw landmarks unchanged for strike detection.
+The live interface no longer draws per-finger colored chains, fingertip trails, or thumb/pinky letter labels. Strike detection still evaluates every fingertip internally, but the visual layer uses the same simple skeleton as the guided evaluator so that non-guided and guided runs look consistent. Piano note triggering uses the model-provided fingertip landmark identity together with a mirror-aware physical left/right hand estimate.
 
 The generated diagrams are used as report figures and as reference assets for documenting the available mappings.
 
@@ -328,7 +329,7 @@ The unit tests cover default piano mapping, synthetic audio duration, pad-zone g
 
 A guided live evaluation was run on May 27, 2026 using the mirrored camera interface and the final `npu-full` architecture: CPU palm detection with NPU hand-landmark inference. To reduce the effect of reading and reaction time, the evaluator used a block-repetition protocol. Each target block had a 5 s initial lead-in, a 6 s ready interval before the target, six repeated strikes at 50 BPM, and the first two strikes of each block were excluded from scoring as warm-up beats. Matching used a -0.20 s / +0.80 s cue window and a 0.35 s global event cooldown to reduce duplicate multi-finger detections.
 
-An initial two-hand piano guided run remained nearly unusable, with only 7.5% recall / target accuracy. Therefore, the final piano guided evaluation used a one-hand right-hand protocol covering only `C5–G5`, with the tracker limited to one hand and mirror-aware finger-order correction enabled. This change directly targets the observed failure mode where the physical right hand was interpreted with left-hand-like finger order, making the physical pinky behave like the thumb note.
+An initial two-hand piano guided run remained nearly unusable, with only 7.5% recall / target accuracy. Therefore, the final piano guided evaluation used a one-hand right-hand protocol covering only `C5–G5`, with the tracker limited to one hand. This restriction directly targets the observed failure mode where simultaneous two-hand piano tracking produced unstable finger identity and very low note accuracy.
 
 Figures 11 and 12 show the guided evaluator UI used for this measurement. Unlike the normal runtime screenshots in Section 2.2, these screens include the current cue, readiness countdown, cue index, target hint, and the accepted matching window.
 

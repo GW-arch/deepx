@@ -2,16 +2,16 @@
 """
 AI Air-Drum Pad — 손가락 관절·손끝 추적으로 실제 악기를 치는 것처럼 타격 감지.
 
-DeepX M1: MediaPipe TFLite → ONNX(`tools/export_mediapipe_hand_onnx.py`) → DX-COM `.dxnn` → `--backend npu`(동일 strike_detector 입력).
+DeepX M1: default live path uses the final CPU-palm + NPU hand-landmark (`npu-full`) pipeline with the same guided-style interface used by the evaluator.
 """
 from __future__ import annotations
 
 import argparse
+import copy
 import os
 import sys
 import time
 from pathlib import Path
-from collections import defaultdict, deque
 
 # Resolve relative paths against the script's own directory so that
 # default model paths like "models/vendor/…" work from any cwd.
@@ -31,7 +31,6 @@ from drumkit_audio import (
 )
 from hand_tracker import create_tracker
 from strike_detector import (
-    FINGER_ANGLE_CHAIN,
     FINGER_LABELS,
     FINGERTIP_INDICES,
     InstrumentStrikeDetector,
@@ -64,26 +63,53 @@ def physical_side_from_screen_x(nx: float, *, mirror: bool) -> int:
     return 0 if nx >= 0.5 else 1
 
 
-MIRRORED_FINGER_ID: dict[int, int] = {
-    4: 20,   # thumb landmark behaves like physical pinky in mirrored piano use
-    8: 16,   # index <-> ring
-    12: 12,  # middle stays middle
-    16: 8,
-    20: 4,
-}
+def draw_guided_style_landmarks(
+    frame: np.ndarray,
+    hand_lms: object,
+    color: tuple[int, int, int] = (0, 255, 255),
+) -> None:
+    """Draw the same minimal hand skeleton used by guided_eval.
+
+    The live, non-guided runtime deliberately avoids per-finger colored trails
+    and thumb/pinky letter overlays, because those made the live interface look
+    different from the guided evaluator and visually amplified occasional
+    right-hand finger-order mistakes.  The strike detector still evaluates each
+    fingertip internally; this drawing is only an interface layer.
+    """
+    h, w = frame.shape[:2]
+    for tip_id in (4, 8, 12, 16, 20):
+        lm = hand_lms.landmark[tip_id]
+        px, py = int(lm.x * w), int(lm.y * h)
+        cv2.circle(frame, (px, py), 7, color, -1)
+        cv2.circle(frame, (px, py), 8, (255, 255, 255), 1)
+
+    connections = (
+        (0, 1), (1, 2), (2, 3), (3, 4),
+        (0, 5), (5, 6), (6, 7), (7, 8),
+        (5, 9), (9, 10), (10, 11), (11, 12),
+        (9, 13), (13, 14), (14, 15), (15, 16),
+        (13, 17), (17, 18), (18, 19), (19, 20),
+        (0, 17),
+    )
+    pts = [(int(lm.x * w), int(lm.y * h)) for lm in hand_lms.landmark]
+    for a, b in connections:
+        cv2.line(frame, pts[a], pts[b], color, 1, cv2.LINE_AA)
 
 
-def piano_finger_id_for_mapping(fid: int, *, mirror: bool) -> int:
-    """Return physical finger id for piano note mapping.
+def landmarks_for_display(hand_lms: object, *, mirror: bool) -> object:
+    """Return landmarks in the coordinate system of the displayed frame.
 
-    With the mirrored selfie feed, the landmark model can treat a physical right
-    hand as the opposite hand, which swaps thumb/pinky identity for note mapping.
-    Remapping only the piano sound slot preserves the raw landmark geometry used
-    by strike detection while making physical fingers trigger the intended notes.
+    Accuracy checks on the captured dataset show that the raw camera frame keeps
+    the model's right-hand thumb/pinky identity correct.  Therefore inference
+    runs on the raw frame and the selfie mirror is applied only to the displayed
+    image and landmark coordinates.
     """
     if not mirror:
-        return fid
-    return MIRRORED_FINGER_ID.get(fid, fid)
+        return hand_lms
+    out = copy.deepcopy(hand_lms)
+    for lm in out.landmark:
+        lm.x = 1.0 - float(lm.x)
+    return out
 
 
 def parse_args() -> argparse.Namespace:
@@ -108,7 +134,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cooldown", type=float, default=0.10, help="같은 손가락/패드 연타 쿨다운(초)")
     p.add_argument("--max-hands", type=int, default=2, choices=[1, 2])
     p.add_argument("--model-complexity", type=int, default=0, choices=[0, 1])
-    p.add_argument("--trail", type=int, default=24, help="손끝 궤적 길이(프레임)")
+    p.add_argument("--trail", type=int, default=24, help="Deprecated/no-op: guided-style live UI no longer draws fingertip trails.")
     p.add_argument(
         "--no-mirror",
         action="store_true",
@@ -134,12 +160,17 @@ def parse_args() -> argparse.Namespace:
         help="지정한 초 뒤 자동 종료합니다. 0이면 수동 종료(q).",
     )
     p.add_argument(
+        "--fullscreen",
+        action="store_true",
+        help="Use fullscreen display. Default is the same windowed layout as guided_eval.",
+    )
+    p.add_argument(
         "--windowed",
         action="store_true",
-        help="Fullscreen 대신 windowed display를 사용합니다.",
+        help="Deprecated/no-op: windowed display is now the default.",
     )
-    p.add_argument("--display-width", type=int, default=1280, help="--windowed canvas width")
-    p.add_argument("--display-height", type=int, default=720, help="--windowed canvas height")
+    p.add_argument("--display-width", type=int, default=1280, help="Windowed canvas width")
+    p.add_argument("--display-height", type=int, default=720, help="Windowed canvas height")
     p.add_argument(
         "--instruments",
         type=str,
@@ -167,21 +198,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--backend",
         type=str,
-        default="cpu",
+        default="npu-full",
         choices=("cpu", "cpu-baseline", "npu", "npu-full"),
-        help="손 추론: cpu=MediaPipe, cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, npu-full=palm TFLite + hand .dxnn",
+        help="손 추론: cpu=MediaPipe, cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, npu-full=palm TFLite + hand .dxnn (default)",
     )
     p.add_argument(
         "--dxnn",
         type=str,
-        default="",
+        default="models/vendor/hand_landmark_lite.dxnn",
         metavar="PATH",
         help="NPU 백엔드일 때 컴파일된 .dxnn 모델 경로",
     )
     p.add_argument(
         "--dxnn-layout",
         type=str,
-        default="",
+        default="models/dxnn_layout.mediapipe_hand_lite.json",
         metavar="PATH",
         help="입출력 레이아웃 JSON (예: models/dxnn_layout.example.json)",
     )
@@ -227,7 +258,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--landmark-correction",
         type=str,
-        default="",
+        default="models/npu_landmark_correction.dataset.json",
         metavar="PATH",
         help=(
             "npu-full 실험용: CPU baseline 기준으로 학습한 NPU landmark affine 보정 JSON. "
@@ -235,25 +266,6 @@ def parse_args() -> argparse.Namespace:
         ),
     )
     return p.parse_args()
-
-
-def draw_finger_chain(
-    frame: np.ndarray,
-    hand_lms: object,
-    tip_id: int,
-    color: tuple[int, int, int],
-) -> None:
-    """관절 체인 시각화 (디버그·연주 느낌)."""
-    if tip_id not in FINGER_ANGLE_CHAIN:
-        return
-    a, b, c = FINGER_ANGLE_CHAIN[tip_id]
-    h, w = frame.shape[:2]
-    pts = []
-    for i in (a, b, c):
-        lm = hand_lms.landmark[i]
-        pts.append((int(lm.x * w), int(lm.y * h)))
-    for i in range(len(pts) - 1):
-        cv2.line(frame, pts[i], pts[i + 1], color, 2, cv2.LINE_AA)
 
 
 def hand_label_origin(
@@ -409,12 +421,11 @@ def main() -> int:
     piano_json = args.instruments.strip() if args.instruments.strip() else "instruments.piano.example.json"
 
     if args.piano:
-        mirror_view = not args.no_mirror
         slots = load_piano_slots_json(piano_json)
         kit = build_piano_kit_for_slots(slots)
-        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands, mv=mirror_view: sound_key_for_finger(
+        sound_mapper = lambda h, lm, s=slots, mh=args.max_hands: sound_key_for_finger(
             h,
-            piano_finger_id_for_mapping(lm, mirror=mv),
+            lm,
             max_hands=mh,
             sound_slots=s,
         )
@@ -446,10 +457,6 @@ def main() -> int:
         )
         det = None
 
-    trails: dict[tuple[int, int], deque[tuple[int, int]]] = defaultdict(
-        lambda: deque(maxlen=max(4, args.trail)),
-    )
-
     cap = cv2.VideoCapture(args.camera)
     cap.set(cv2.CAP_PROP_FRAME_WIDTH, args.width)
     cap.set(cv2.CAP_PROP_FRAME_HEIGHT, args.height)
@@ -467,7 +474,10 @@ def main() -> int:
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
         landmark_correction=(
-            args.landmark_correction if args.landmark_correction.strip() else None
+            args.landmark_correction
+            if args.landmark_correction.strip()
+            and Path(args.landmark_correction).is_file()
+            else None
         ),
     )
 
@@ -475,24 +485,24 @@ def main() -> int:
     frames = 0
     mode = "piano" if args.piano else "drum"
     be = f"{args.backend.upper()}"
-    if args.backend == "npu" and args.dxnn.strip():
-        be = f"NPU:{Path(args.dxnn).name}"
+    if args.backend in ("npu", "npu-full") and args.dxnn.strip():
+        be = f"{args.backend.upper()}:{Path(args.dxnn).name}"
     mapping_hint = "(손,손가락)→음" if args.piano else "on-screen rectangle pad → drum sound"
     print(
         f"Air-Drum [{mode}] backend={be}: q=quit | tip↓ + joint motion → hit | {mapping_hint}",
         flush=True,
     )
 
-    # --- Fullscreen window ---
+    # --- Guided-style live window: windowed by default, fullscreen only on request. ---
     title = "AI Air-Drum (piano)" if args.piano else "AI Air-Drum (drum)"
     cv2.namedWindow(title, cv2.WINDOW_NORMAL)
-    if args.windowed:
-        cv2.resizeWindow(title, args.display_width, args.display_height)
-    else:
+    if args.fullscreen:
         cv2.setWindowProperty(title, cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.resizeWindow(title, args.display_width, args.display_height)
 
-    # --- Detect display size for guided-style live overlay ---
-    if args.windowed:
+    # --- Detect display/canvas size for guided-style live overlay ---
+    if not args.fullscreen:
         screen_w, screen_h = args.display_width, args.display_height
     else:
         screen_w, screen_h = 1920, 1080  # fallback
@@ -531,15 +541,20 @@ def main() -> int:
                 print("Camera read failed", file=sys.stderr)
                 return 1
             fail_streak = 0
-            if not args.no_mirror:
-                frame = cv2.flip(frame, 1)
-
             frames += 1
             t = time.perf_counter()
-            rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            raw_frame = frame
+            rgb = cv2.cvtColor(raw_frame, cv2.COLOR_BGR2RGB)
             res = tracker.process(rgb)
+            if not args.no_mirror:
+                frame = cv2.flip(raw_frame, 1)
+            else:
+                frame = raw_frame
 
-            landmarks_list = res.multi_hand_landmarks or []
+            landmarks_list = [
+                landmarks_for_display(hl, mirror=not args.no_mirror)
+                for hl in (res.multi_hand_landmarks or [])
+            ]
             handedness_list = res.multi_handedness or []
 
             side_by_mp.clear()
@@ -559,37 +574,32 @@ def main() -> int:
                 if hand_idx < len(handedness_list):
                     conf = float(handedness_list[hand_idx].classification[0].score)
 
-                label = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
+                hand_side = side_by_mp.get(hand_idx, hand_idx)
+                label = "L" if hand_side == 0 else "R"
+                draw_guided_style_landmarks(frame, hand_lms, (0, 255, 255))
                 cv2.putText(
                     frame,
                     f"H{hand_idx}:{label}",
                     hand_label_origin(frame, hand_lms, reserved_top_px=76),
                     cv2.FONT_HERSHEY_SIMPLEX,
                     0.55,
-                    (200, 255, 255),
-                    2,
+                    (255, 255, 0),
+                    1,
                     cv2.LINE_AA,
                 )
 
                 for fid in FINGERTIP_INDICES:
-                    col = FINGER_COLORS.get(fid, (200, 200, 200))
-                    draw_finger_chain(frame, hand_lms, fid, col)
-
                     if args.piano:
                         assert det is not None
-                        mapped_hand_idx = side_by_mp.get(hand_idx, hand_idx)
+                        mapped_hand_idx = hand_side
                         hit = det.update_finger(mapped_hand_idx, fid, t, hand_lms, conf)
                         if hit:
                             _, sk = hit
                             if sk in kit:
                                 kit[sk].play()
                             # Record for on-screen feedback
-                            mapped_fid = piano_finger_id_for_mapping(
-                                fid,
-                                mirror=not args.no_mirror,
-                            )
-                            fn = FINGER_LABELS.get(mapped_fid, "?")
-                            side = "L" if side_by_mp.get(hand_idx, 0) == 0 else "R"
+                            fn = FINGER_LABELS.get(fid, "?")
+                            side = "L" if hand_side == 0 else "R"
                             strike_events.append(
                                 (
                                     t + STRIKE_DISPLAY_SEC,
@@ -612,28 +622,6 @@ def main() -> int:
                             )
                             active_pads[hit_pad.label] = t + PAD_FLASH_SEC
 
-                    lm = hand_lms.landmark[fid]
-                    px = int(lm.x * frame.shape[1])
-                    py = int(lm.y * frame.shape[0])
-                    trails[(hand_idx, fid)].append((px, py))
-                    tdeque = trails[(hand_idx, fid)]
-                    if len(tdeque) >= 2:
-                        arr = np.array(list(tdeque), dtype=np.int32)
-                        cv2.polylines(frame, [arr], False, col, 2, cv2.LINE_AA)
-
-                    cv2.circle(frame, (px, py), 6, col, -1)
-                    cv2.circle(frame, (px, py), 7, (255, 255, 255), 1)
-                    fn = FINGER_LABELS.get(fid, "?")
-                    cv2.putText(
-                        frame,
-                        fn[0].upper(),
-                        (px + 5, py - 5),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.35,
-                        col,
-                        1,
-                        cv2.LINE_AA,
-                    )
 
             if frames % 30 == 0:
                 elapsed = time.perf_counter() - fps_t0
