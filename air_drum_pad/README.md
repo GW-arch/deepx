@@ -67,11 +67,15 @@ python3 main.py --backend npu --piano --camera 0 \
 `demo_run.py`는 드럼 모드를 켜고 배경 트랙을 함께 재생합니다. 저작권 음악 파일은 포함하지 않으므로, 실제 Queen 곡을 쓰려면 본인이 가진 합법적인 오디오 파일을 지정하세요.
 
 ```bash
-# 실제 배경음악 파일과 함께 실행
+# dataset/ 안에 MP3/WAV/OGG가 하나 있으면 자동으로 사용
+python3 demo_run.py --camera 0
+
+# 또는 실제 배경음악 파일을 명시해서 실행
 python3 demo_run.py --camera 0 --backing-track ~/Music/we_will_rock_you.mp3
 
 # 오디오 파일이 없으면 royalty-free "stomp stomp clap" 가이드 루프를 자동 생성
-python3 demo_run.py --camera 0
+# 가이드 생성도 끄려면:
+python3 demo_run.py --camera 0 --no-guide
 
 # 패턴만 확인
 python3 demo_run.py --print-pattern

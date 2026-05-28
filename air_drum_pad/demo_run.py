@@ -6,7 +6,8 @@ track, pass your own legally obtained audio file:
 
     python3 demo_run.py --backing-track ~/Music/we_will_rock_you.mp3
 
-If no backing track is supplied, the script generates a simple royalty-free
+If no backing track is supplied, the script first looks for a single audio file
+in ``dataset/``.  If none is found, it generates a simple royalty-free
 "stomp stomp clap" guide loop so the live PANDA drum sounds can be recorded on
 top of it.
 """
@@ -23,6 +24,8 @@ import numpy as np
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
+DATASET_DIR = SCRIPT_DIR / "dataset"
+BACKING_EXTENSIONS = (".mp3", ".wav", ".ogg")
 
 
 def parse_args() -> tuple[argparse.Namespace, list[str]]:
@@ -57,7 +60,7 @@ def parse_args() -> tuple[argparse.Namespace, list[str]]:
     p.add_argument(
         "--no-guide",
         action="store_true",
-        help="Do not generate a guide loop when --backing-track is omitted.",
+        help="Do not generate a guide loop when no backing audio is found.",
     )
     p.add_argument(
         "--print-pattern",
@@ -76,6 +79,26 @@ def print_pattern() -> None:
         "Easy ending: repeat for 3 bars, then use crash on the final hit:\n"
         "        kick kick snare | kick kick crash\n"
     )
+
+
+def find_dataset_backing_track() -> Path | None:
+    """Auto-select one user-supplied audio file from dataset/, if unambiguous."""
+    if not DATASET_DIR.is_dir():
+        return None
+    candidates = sorted(
+        p
+        for p in DATASET_DIR.iterdir()
+        if p.is_file() and p.suffix.lower() in BACKING_EXTENSIONS
+    )
+    if len(candidates) == 1:
+        return candidates[0]
+    if len(candidates) > 1:
+        print(
+            "Multiple audio files found in dataset/; pass --backing-track explicitly:\n"
+            + "\n".join(f"  - {p}" for p in candidates),
+            file=sys.stderr,
+        )
+    return None
 
 
 def _envelope(n: int, attack: float = 0.002, decay: float = 0.12, sr: int = 44100) -> np.ndarray:
@@ -178,6 +201,9 @@ def main() -> int:
     backing = args.backing_track.strip()
     if backing:
         backing_path = Path(backing).expanduser()
+    elif (dataset_backing := find_dataset_backing_track()) is not None:
+        backing_path = dataset_backing
+        print(f"Using dataset backing track: {backing_path}", flush=True)
     elif args.no_guide:
         backing_path = None
     else:
