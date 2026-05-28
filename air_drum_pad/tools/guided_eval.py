@@ -982,6 +982,7 @@ def run_live(args: argparse.Namespace) -> int:
                         frame_candidates.append((label, detail, hit_pad.sound_key))
 
             if frame_candidates:
+                accepted_this_frame = False
                 if args.allow_multi_hit:
                     accepted_candidates = frame_candidates
                 elif elapsed - last_accepted_event_t >= args.global_event_cooldown:
@@ -1004,6 +1005,9 @@ def run_live(args: argparse.Namespace) -> int:
                     events.append(event)
                     last_flash = (elapsed + 0.35, label)
                     last_accepted_event_t = elapsed
+                    accepted_this_frame = True
+            else:
+                accepted_this_frame = False
 
             completed_scored_cues = [
                 cue for cue in scored_cues if elapsed > cue.t_s + args.post_window
@@ -1063,6 +1067,12 @@ def run_live(args: argparse.Namespace) -> int:
                 break
             if elapsed > cues[-1].t_s + args.post_window + args.finish_hold:
                 break
+            if accepted_this_frame and args.strike_sleep > 0:
+                time.sleep(float(args.strike_sleep))
+                if det is not None:
+                    det.reset()
+                if pad_det is not None:
+                    pad_det.reset()
     finally:
         cap.release()
         if writer is not None:
@@ -1099,6 +1109,7 @@ def run_live(args: argparse.Namespace) -> int:
         "vy_trigger": args.vy_trigger,
         "joint_dps": args.joint_dps,
         "cooldown_s": args.cooldown,
+        "strike_sleep_s": args.strike_sleep,
         "global_event_cooldown_s": args.global_event_cooldown,
         "allow_multi_hit": args.allow_multi_hit,
         "suppressed_candidate_count": suppressed_candidate_count,
@@ -1172,6 +1183,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--vy-trigger", type=float, default=0.05)
     p.add_argument("--joint-dps", type=float, default=35.0)
     p.add_argument("--cooldown", type=float, default=0.35)
+    p.add_argument(
+        "--strike-sleep",
+        type=float,
+        default=0.10,
+        help="Sleep/reset this many seconds after one accepted strike to suppress secondary ghost hits.",
+    )
     p.add_argument(
         "--global-event-cooldown",
         type=float,

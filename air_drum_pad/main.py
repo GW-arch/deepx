@@ -116,6 +116,15 @@ def parse_args() -> argparse.Namespace:
         help="관절 각속도(|deg/s|) 하한 — 손가락 관절이 실제로 움직일 때",
     )
     p.add_argument("--cooldown", type=float, default=0.10, help="같은 손가락/패드 연타 쿨다운(초)")
+    p.add_argument(
+        "--strike-sleep",
+        type=float,
+        default=0.10,
+        help=(
+            "Sleep/reset this many seconds after one accepted strike. "
+            "Default 0.10 s suppresses secondary ghost hits from the same target-finger motion."
+        ),
+    )
     p.add_argument("--max-hands", type=int, default=2, choices=[1, 2])
     p.add_argument("--model-complexity", type=int, default=0, choices=[0, 1])
     p.add_argument("--trail", type=int, default=24, help="Deprecated/no-op: guided-style live UI no longer draws fingertip trails.")
@@ -594,6 +603,7 @@ def main() -> int:
 
             landmarks_list = res.multi_hand_landmarks or []
             handedness_list = res.multi_handedness or []
+            strike_accepted_this_frame = False
 
             side_by_mp.clear()
             for i, hl in enumerate(landmarks_list):
@@ -632,6 +642,8 @@ def main() -> int:
                         mapped_hand_idx = hand_side
                         hit = det.update_finger(mapped_hand_idx, fid, t, hand_lms, conf)
                         if hit:
+                            if strike_accepted_this_frame:
+                                continue
                             _, sk = hit
                             if sk in kit:
                                 kit[sk].play()
@@ -645,10 +657,13 @@ def main() -> int:
                                     FINGER_COLORS.get(fid, (200, 200, 200)),
                                 )
                             )
+                            strike_accepted_this_frame = True
                     else:
                         assert pad_det is not None
                         hit_pad = pad_det.update_finger(hand_side, fid, t, hand_lms, conf)
                         if hit_pad:
+                            if strike_accepted_this_frame:
+                                continue
                             if hit_pad.sound_key in kit:
                                 kit[hit_pad.sound_key].play()
                             strike_events.append(
@@ -659,6 +674,7 @@ def main() -> int:
                                 )
                             )
                             active_pads[hit_pad.label] = t + PAD_FLASH_SEC
+                            strike_accepted_this_frame = True
 
 
             if frames % 30 == 0:
@@ -705,6 +721,12 @@ def main() -> int:
                 break
             if args.auto_quit_after > 0 and run_elapsed >= args.auto_quit_after:
                 break
+            if strike_accepted_this_frame and args.strike_sleep > 0:
+                time.sleep(float(args.strike_sleep))
+                if det is not None:
+                    det.reset()
+                if pad_det is not None:
+                    pad_det.reset()
     finally:
         if backing_started:
             pygame.mixer.music.stop()
