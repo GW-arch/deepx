@@ -35,6 +35,12 @@ FINGER_JOINT_DPS_TRIGGER_SCALE: dict[int, float] = {
     12: 0.65,  # middle
 }
 
+
+def _mean_other_fingertip_y(hand_lms: Any, tip_id: int) -> float:
+    """Mean y of the other fingertips, used as a local strike reference."""
+    others = [fid for fid in FINGERTIP_INDICES if fid != tip_id]
+    return sum(float(hand_lms.landmark[fid].y) for fid in others) / max(1, len(others))
+
 _DEFAULT_SOUND_BY_SLOT: tuple[str, ...] = (
     "kick",
     "snare",
@@ -139,6 +145,7 @@ class InstrumentStrikeDetector:
         cooldown_s: float = 0.10,
         min_tip_disp: float = 0.008,
         relative_vy_scale: float = 0.30,
+        relative_tip_drop: float = 0.020,
         min_conf: float = 0.5,
         max_hands: int = 2,
         sound_mapper: Optional[Callable[[int, int], str]] = None,
@@ -148,6 +155,7 @@ class InstrumentStrikeDetector:
         self.cooldown_s = cooldown_s
         self.min_tip_disp = min_tip_disp
         self.relative_vy_scale = relative_vy_scale
+        self.relative_tip_drop = relative_tip_drop
         self.min_conf = min_conf
         self.max_hands = max_hands
         if sound_mapper is not None:
@@ -199,6 +207,8 @@ class InstrumentStrikeDetector:
         nx, ny = tip.x, tip.y
         wrist = hand_lms.landmark[0]
         rel_y = ny - wrist.y
+        other_tip_mean_y = _mean_other_fingertip_y(hand_lms, tip_id)
+        relative_drop = ny - other_tip_mean_y
 
         dt = 1e-4
         if vk in self._prev_t:
@@ -232,9 +242,13 @@ class InstrumentStrikeDetector:
         # Reject whole-hand/model-origin jumps: a true finger hit should move
         # the fingertip downward at least a little relative to the wrist.
         rel_tip_ok = rel_vy >= tip_threshold * self.relative_vy_scale
+        # Also require the target fingertip to be visibly lower than the other
+        # fingertips.  This rejects false positives from moving a target finger
+        # sideways/upward while all fingertips remain at similar vertical depth.
+        relative_drop_ok = relative_drop >= self.relative_tip_drop
         joint_ok = abs(joint_dps) >= joint_threshold
 
-        if not (tip_ok and rel_tip_ok and joint_ok):
+        if not (tip_ok and rel_tip_ok and relative_drop_ok and joint_ok):
             return None
 
         # Minimum displacement since last hit — reject jitter/noise
@@ -287,6 +301,7 @@ class PadStrikeDetector:
         joint_dps_trigger: float = 16.0,
         cooldown_s: float = 0.10,
         relative_vy_scale: float = 0.30,
+        relative_tip_drop: float = 0.020,
         min_conf: float = 0.5,
     ) -> None:
         self.pads = list(pads)
@@ -294,6 +309,7 @@ class PadStrikeDetector:
         self.joint_dps_trigger = joint_dps_trigger
         self.cooldown_s = cooldown_s
         self.relative_vy_scale = relative_vy_scale
+        self.relative_tip_drop = relative_tip_drop
         self.min_conf = min_conf
         self._prev_y: dict[tuple[int, int], float] = {}
         self._prev_rel_y: dict[tuple[int, int], float] = {}
@@ -329,6 +345,8 @@ class PadStrikeDetector:
         nx, ny = tip.x, tip.y
         wrist = hand_lms.landmark[0]
         rel_y = ny - wrist.y
+        other_tip_mean_y = _mean_other_fingertip_y(hand_lms, tip_id)
+        relative_drop = ny - other_tip_mean_y
 
         dt = 1e-4
         if vk in self._prev_t:
@@ -362,8 +380,11 @@ class PadStrikeDetector:
         # shifting when another hand moves: actual strikes should move the
         # fingertip downward relative to the wrist, not only in image space.
         rel_tip_ok = rel_vy >= tip_threshold * self.relative_vy_scale
+        # Require the struck fingertip to be recognizably lower than the other
+        # fingertips so generic hand/finger movement does not trigger a pad.
+        relative_drop_ok = relative_drop >= self.relative_tip_drop
         joint_ok = abs(joint_dps) >= joint_threshold
-        if not (tip_ok and rel_tip_ok and joint_ok):
+        if not (tip_ok and rel_tip_ok and relative_drop_ok and joint_ok):
             return None
 
         for pad in self.pads:

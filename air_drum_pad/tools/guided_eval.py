@@ -815,6 +815,7 @@ def run_live(args: argparse.Namespace) -> int:
             vy_trigger=args.vy_trigger,
             joint_dps_trigger=args.joint_dps,
             cooldown_s=args.cooldown,
+            relative_tip_drop=args.relative_tip_drop,
             max_hands=2,
             sound_mapper=sound_mapper,
         )
@@ -825,6 +826,7 @@ def run_live(args: argparse.Namespace) -> int:
             vy_trigger=args.vy_trigger,
             joint_dps_trigger=args.joint_dps,
             cooldown_s=args.cooldown,
+            relative_tip_drop=args.relative_tip_drop,
         )
         det = None
 
@@ -1109,6 +1111,7 @@ def run_live(args: argparse.Namespace) -> int:
         "vy_trigger": args.vy_trigger,
         "joint_dps": args.joint_dps,
         "cooldown_s": args.cooldown,
+        "relative_tip_drop": args.relative_tip_drop,
         "strike_sleep_s": args.strike_sleep,
         "global_event_cooldown_s": args.global_event_cooldown,
         "allow_multi_hit": args.allow_multi_hit,
@@ -1183,6 +1186,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     p.add_argument("--vy-trigger", type=float, default=0.05)
     p.add_argument("--joint-dps", type=float, default=35.0)
     p.add_argument("--cooldown", type=float, default=0.35)
+    p.add_argument(
+        "--relative-tip-drop",
+        type=float,
+        default=0.020,
+        help="Target fingertip must be this much lower than the mean y of the other fingertips.",
+    )
     p.add_argument(
         "--strike-sleep",
         type=float,

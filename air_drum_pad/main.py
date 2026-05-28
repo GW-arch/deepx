@@ -117,6 +117,15 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--cooldown", type=float, default=0.10, help="같은 손가락/패드 연타 쿨다운(초)")
     p.add_argument(
+        "--relative-tip-drop",
+        type=float,
+        default=0.020,
+        help=(
+            "Target fingertip must be this much lower than the mean y of the other fingertips. "
+            "Raises strike intent threshold beyond simple velocity."
+        ),
+    )
+    p.add_argument(
         "--strike-sleep",
         type=float,
         default=0.10,
@@ -459,6 +468,7 @@ def main() -> int:
             vy_trigger=args.vy_trigger,
             joint_dps_trigger=args.joint_dps,
             cooldown_s=args.cooldown,
+            relative_tip_drop=args.relative_tip_drop,
             max_hands=args.max_hands,
             sound_mapper=sound_mapper,
         )
@@ -480,6 +490,7 @@ def main() -> int:
             vy_trigger=args.vy_trigger,
             joint_dps_trigger=args.joint_dps,
             cooldown_s=args.cooldown,
+            relative_tip_drop=args.relative_tip_drop,
         )
         det = None
 

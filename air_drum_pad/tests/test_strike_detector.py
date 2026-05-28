@@ -32,7 +32,7 @@ class _Hand:
 
 def _hand_with_index_pose(tip_y: float, tip_x: float) -> _Hand:
     """Build a minimal 21-landmark hand with a controlled index chain."""
-    lms = [_Lm() for _ in range(21)]
+    lms = [_Lm(y=0.40) for _ in range(21)]
     # index chain: MCP(5), PIP(6), TIP(8)
     lms[5] = _Lm(0.40, 0.40)
     lms[6] = _Lm(0.50, 0.50)
@@ -42,7 +42,7 @@ def _hand_with_index_pose(tip_y: float, tip_x: float) -> _Hand:
 
 def _hand_with_tip_pose(tip_id: int, tip_y: float, tip_x: float) -> _Hand:
     """Build a minimal 21-landmark hand with a controlled chain for any fingertip."""
-    lms = [_Lm() for _ in range(21)]
+    lms = [_Lm(y=0.40) for _ in range(21)]
     a, b, c = FINGER_ANGLE_CHAIN[tip_id]
     lms[a] = _Lm(0.40, 0.40)
     lms[b] = _Lm(0.50, 0.50)
@@ -57,7 +57,7 @@ def _translated_hand_with_index_pose(
     tip_x: float,
 ) -> _Hand:
     """Index pose with explicit wrist y for whole-hand ghost-strike tests."""
-    lms = [_Lm() for _ in range(21)]
+    lms = [_Lm(y=0.40) for _ in range(21)]
     lms[0] = _Lm(0.50, wrist_y)
     lms[5] = _Lm(0.40, wrist_y - 0.10)
     lms[6] = _Lm(0.50, wrist_y)
@@ -138,6 +138,33 @@ class StrikeDetectorTests(unittest.TestCase):
                 1.0,
             )
         )
+
+    def test_update_finger_requires_tip_lower_than_other_fingers(self) -> None:
+        det = InstrumentStrikeDetector(
+            vy_trigger=0.10,
+            joint_dps_trigger=1.0,
+            cooldown_s=0.0,
+            min_tip_disp=0.0,
+            min_conf=0.0,
+            sound_mapper=lambda _h, _lm: "snare",
+        )
+
+        hand0 = _hand_with_index_pose(0.50, 0.60)
+        hand0.landmark[4].y = 0.49
+        hand0.landmark[12].y = 0.50
+        hand0.landmark[16].y = 0.50
+        hand0.landmark[20].y = 0.51
+        self.assertIsNone(det.update_finger(0, 8, 0.0, hand0, 1.0))
+
+        # The index fingertip moves down fast and changes angle, but it remains
+        # nearly level with the other fingertips, so this is not a recognizable
+        # strike posture.
+        hand1 = _hand_with_index_pose(0.62, 0.75)
+        hand1.landmark[4].y = 0.60
+        hand1.landmark[12].y = 0.61
+        hand1.landmark[16].y = 0.62
+        hand1.landmark[20].y = 0.63
+        self.assertIsNone(det.update_finger(0, 8, 0.1, hand1, 1.0))
 
     def test_middle_finger_uses_more_sensitive_threshold(self) -> None:
         base_args = dict(
@@ -254,6 +281,30 @@ class StrikeDetectorTests(unittest.TestCase):
                 1.0,
             )
         )
+
+    def test_pad_strike_detector_requires_tip_lower_than_other_fingers(self) -> None:
+        pad = PadZone("clap", "clap", 0.50, 0.50, 0.90, 0.90, (10, 20, 30))
+        det = PadStrikeDetector(
+            [pad],
+            vy_trigger=0.10,
+            joint_dps_trigger=1.0,
+            cooldown_s=0.0,
+            min_conf=0.0,
+        )
+
+        hand0 = _hand_with_index_pose(0.50, 0.60)
+        hand0.landmark[4].y = 0.49
+        hand0.landmark[12].y = 0.50
+        hand0.landmark[16].y = 0.50
+        hand0.landmark[20].y = 0.51
+        self.assertIsNone(det.update_finger(1, 8, 0.0, hand0, 1.0))
+
+        hand1 = _hand_with_index_pose(0.62, 0.75)
+        hand1.landmark[4].y = 0.60
+        hand1.landmark[12].y = 0.61
+        hand1.landmark[16].y = 0.62
+        hand1.landmark[20].y = 0.63
+        self.assertIsNone(det.update_finger(1, 8, 0.1, hand1, 1.0))
 
     def test_pad_strike_detector_ignores_hits_outside_pad_and_enforces_cooldown(self) -> None:
         pad = PadZone("snare pad", "snare", 0.70, 0.55, 0.90, 0.95, (10, 20, 30))
