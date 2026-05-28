@@ -105,7 +105,7 @@ A custom JSON piano layout example is also generated using the same default slot
 
 ### 2.2 Live Interface Screenshots
 
-The runtime interface screenshots use the normal, non-guided overlay on captured camera frames after the mirror-view and default-runtime updates. The default `main.py` path now starts the final CPU+NPU `npu-full` backend, uses the same hand-landmark model, layout files, and dataset-calibrated landmark correction used by the validated NPU path, and presents the same guided-style mirrored windowed interface without cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed and a simple yellow hand skeleton. The piano screenshot shows the live hand-to-note interface with the same skeleton-style visualization overlaid on the camera view.
+Live screenshots were captured from the normal, non-guided runtime after the mirror-view update. The non-guided interface uses the same full-camera overlay style as the guided evaluator, but removes cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed, fingertip landmark overlays, and recent strike feedback. The piano screenshot shows the live hand-to-note interface with recent strike feedback overlaid on the camera view.
 
 ![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored CPU+NPU interface.](figures/live_drum_interface.png)
 
@@ -231,11 +231,11 @@ The NPU-full path is architecturally preferred for accurate hand localization an
 
 ### 5.2 User Interface
 
-The runtime display contains the camera feed, a guided-evaluator-style yellow hand skeleton, fingertip points, and mode-specific overlays. It is windowed by default, matching the guided evaluator, with fullscreen available only by explicit option. Accuracy checks on the pre-collected replay dataset showed that running inference on the raw camera frame preserves the model's right-hand thumb-to-pinky identity better than running inference on an already mirrored frame. Therefore, the final interface runs palm and hand-landmark inference on the raw frame, then mirrors only the displayed image and landmark coordinates for the selfie view. This produces an interface in which moving a hand leftward in physical space also moves it leftward on the screen, while the anatomical thumb/pinky landmark order is not reversed by the display transform. A `--no-mirror` option remains available for camera setups that already provide mirrored input.
+The runtime display contains the camera feed, hand/finger landmark overlays, and mode-specific overlays. The camera feed is mirrored by default, producing a selfie-style interface in which moving a hand leftward in physical space also moves it leftward on the screen. This small interface detail is important for playability: without the mirror flip, the performer must mentally invert left/right motion while aiming at drum pads or piano cues. A `--no-mirror` option remains available for camera setups that already provide mirrored input.
 
 In drum mode, rectangles are drawn directly on the mirrored camera feed and flash briefly when hit; hit testing uses the same display-transformed landmark coordinates, so pad locations match what the performer sees. In piano mode, the note mapping is tied to a mirror-aware physical left/right estimate rather than raw tracker hand order or raw MediaPipe handedness. This keeps the user-specified left-hand and right-hand note ranges stable even when the camera feed is flipped for the performer and even when the hand tracker changes the order of detected hands.
 
-The live interface no longer draws per-finger colored chains, fingertip trails, or thumb/pinky letter labels. Strike detection still evaluates every fingertip internally, but the visual layer uses the same simple skeleton as the guided evaluator so that non-guided and guided runs look consistent. Piano note triggering uses the model-provided fingertip landmark identity together with a mirror-aware physical left/right hand estimate.
+The live interface draws per-finger landmark overlays for operator feedback while strike detection evaluates every fingertip internally. Piano note triggering uses the model-provided fingertip landmark identity together with a mirror-aware physical left/right hand estimate.
 
 The generated diagrams are used as report figures and as reference assets for documenting the available mappings.
 
