@@ -12,7 +12,7 @@
 
 **Affiliation:** FILLME
 
-**Date:** 2026-05-27
+**Date:** 2026-06-16
 
 **Code availability:** Not publicly released.
 
@@ -20,7 +20,7 @@
 
 ## Abstract
 
-This report presents **PANDA**, short for <u><strong>P</strong></u>ose-<u><strong>A</strong></u>ware <u><strong>N</strong></u>PU-Driven <u><strong>D</strong></u>igital <u><strong>A</strong></u>udio Interface, a real-time camera-based musical interface that converts hand and finger motions into playable drum and piano events. The system tracks hand landmarks from a USB camera, estimates downward fingertip velocity and finger-joint angular velocity, and triggers audio only when both motion cues indicate an intentional strike. Two musical modes are implemented on the same perception-and-strike-detection core: (1) a **drum pad mode**, where any fingertip may strike an on-screen rectangular pad, and (2) a **piano mode**, where notes are mapped to hand and finger identity. The final piano default layout maps the left hand from thumb to pinky as `G4, F4, E4, D4, C4` and the right hand as `C5, D5, E5, F5, G5`. The implementation supports CPU MediaPipe, CPU TFLite baseline, hybrid CPU+NPU hand-landmark inference, and a low-latency NPU dual-halves mode. Evaluation utilities and unit tests validate strike detection, pad-zone parsing, piano-note mapping, ROI transforms, and benchmark helpers. Prototype measurements show that the low-latency NPU dual-halves backend can approach the 60 FPS frame budget, while the more accurate palm-detection pipeline is limited by CPU palm detection. The project demonstrates a practical path toward low-cost, contactless musical instruments on edge AI hardware, with clear remaining work in end-to-end audio-latency measurement, robust hit-accuracy evaluation, and user studies.
+This report presents **PANDA**, short for <u><strong>P</strong></u>ose-<u><strong>A</strong></u>ware <u><strong>N</strong></u>PU-Driven <u><strong>D</strong></u>igital <u><strong>A</strong></u>udio Interface, a real-time camera-based musical interface that converts hand and finger motions into playable drum and piano events. The system tracks hand landmarks from a USB camera, estimates downward fingertip velocity and finger-joint angular velocity, and triggers audio only when both motion cues indicate an intentional strike. Two musical modes are implemented on the same perception-and-strike-detection core: (1) a **drum pad mode**, where any fingertip may strike an on-screen rectangular pad, and (2) a **piano mode**, where notes are mapped to hand and finger identity. The final piano default layout maps the left hand from thumb to pinky as `G4, F4, E4, D4, C4` and the right hand as `C5, D5, E5, F5, G5`. The implementation supports CPU MediaPipe, CPU TFLite baseline, hybrid CPU+NPU MediaPipe hand-landmark inference, experimental PINTO ONNX CPU inference, and NPU-focused experimental paths. Evaluation utilities and unit tests validate strike detection, pad-zone parsing, piano-note mapping, ROI transforms, CLI defaults, and benchmark helpers. Prototype measurements show that the valid `npu-full` pipeline reduces hand-landmark time from about 44.8 ms on CPU TFLite to about 9.1 ms on NPU, but the end-to-end accurate pipeline remains dominated by CPU palm detection at about 40 ms. A palm-detection `.dxnn` path runs quickly and uses the NPU, but currently produces no accepted palm detections in the benchmark pipeline and therefore cannot yet be treated as a working full-NPU tracker. The project demonstrates a practical path toward low-cost, contactless musical instruments on edge AI hardware, with clear remaining work in palm-detector deployment, end-to-end audio-latency measurement, robust hit-accuracy evaluation, and user studies.
 
 **Keywords:** PANDA, contactless musical interface, hand tracking, gesture recognition, air drums, virtual piano, edge AI, NPU, real-time interaction
 
@@ -48,6 +48,8 @@ The implemented project contributes:
 - A mirrored selfie-view display and guided-style windowed skeleton overlay, enabled by default, so the performer's left/right hand motion and visual feedback match the guided evaluator.
 - Generated interface diagrams for both modes.
 - A default `main.py` runtime that launches the final `npu-full` CPU+NPU model path when packaged models are available.
+- An experimental `pinto-cpu` backend using the PINTO sparse hand-landmark ONNX model for CPU-side adoption testing [6], [7].
+- A measured characterization of the experimental palm-detection `.dxnn` path, including NPU utilization and the current failure mode where no accepted palms are produced.
 - Report figures generated programmatically for system architecture, strike logic, and backend latency.
 - A repeatable validation pipeline covering mapping, detector behavior, pad validation, ROI helpers, and benchmark helpers.
 
@@ -105,15 +107,15 @@ A custom JSON piano layout example is also generated using the same default slot
 
 ### 2.2 Live Interface Screenshots
 
-Live screenshots were captured from the normal, non-guided runtime after the mirror-view and shape-preserving NPU bias-calibration updates. The non-guided interface uses the same full-camera overlay style as the guided evaluator, but removes cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed, fingertip landmark overlays, and recent strike feedback. The piano screenshot shows the live hand-to-note interface with recent strike feedback overlaid on the camera view.
+Live screenshots were captured from the normal, non-guided runtime after the mirror-view and full-camera overlay updates. The non-guided interface uses the same full-camera overlay style as the guided evaluator, but removes cue-specific guidance such as countdowns and "ready" prompts. The drum screenshot shows the pad-based performance interface with a mirrored camera feed, fingertip landmark overlays, and recent strike feedback. The piano screenshot shows the live hand-to-note interface with recent strike feedback overlaid on the camera view.
 
-![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.](figures/live_drum_interface.png)
+![Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored CPU+NPU interface.](figures/live_drum_interface.png)
 
-<p align="center"><em>Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.</em></p>
+<p align="center"><em>Figure 6. Non-guided drum-pad runtime screenshot captured from the mirrored CPU+NPU interface.</em></p>
 
-![Figure 7. Non-guided piano runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.](figures/live_piano_interface.png)
+![Figure 7. Non-guided piano runtime screenshot captured from the mirrored CPU+NPU interface.](figures/live_piano_interface.png)
 
-<p align="center"><em>Figure 7. Non-guided piano runtime screenshot captured from the mirrored, bias-calibrated CPU+NPU interface.</em></p>
+<p align="center"><em>Figure 7. Non-guided piano runtime screenshot captured from the mirrored CPU+NPU interface.</em></p>
 
 ---
 
@@ -218,16 +220,18 @@ The system pre-renders synthetic drum and piano sounds into `pygame.mixer.Sound`
 
 ### 5.1 Runtime Backends
 
-The application supports four major backend configurations, including MediaPipe-based CPU inference [1], [2] and DEEPX `.dxnn` NPU execution through the DXNN toolchain [5].
+The application supports several backend configurations, including MediaPipe-based CPU inference [1], [2], DEEPX `.dxnn` NPU execution through the DXNN toolchain [5], and an experimental PINTO ONNX CPU backend [6], [7].
 
 | Backend | Palm detection | Hand landmarks | Intended use |
 |---------|----------------|----------------|--------------|
 | `cpu` | MediaPipe internal [1], [2] | MediaPipe internal [1], [2] | Simple CPU-only baseline |
 | `cpu-baseline` | CPU TFLite | CPU TFLite | Comparable pipeline without NPU |
 | `npu-full` | CPU TFLite | NPU `.dxnn` | Accurate palm pipeline with NPU hand inference; default `main.py` runtime |
+| `npu-full --palm-dxnn ...` | NPU `.dxnn` | NPU `.dxnn`, if palms are accepted | Experimental full-NPU path; currently invalid because no accepted palms are produced |
 | `npu` | none / dual-halves approximation | NPU `.dxnn` | Fastest low-latency approximation |
+| `pinto-cpu` | CPU TFLite | PINTO ONNX on CPU | Adoption experiment for the PINTO sparse hand-landmark model |
 
-The NPU-full path is architecturally preferred for accurate hand localization and is the default runtime used by `main.py` when the packaged model files are present. The default also loads the dataset-calibrated NPU landmark-correction JSON when available, because the pre-collected replay dataset shows that it reduces mean normalized NPU landmark error versus the CPU TFLite reference. CPU palm detection still dominates latency. The dual-halves NPU mode is faster because it removes palm detection, but it is a geometric approximation and should be evaluated under the target camera setup.
+The default `npu-full` path is architecturally preferred for accurate hand localization and is the default runtime used by `main.py` when the packaged model files are present. In the final implementation, landmark correction is **off by default** because the latest replay benchmark showed that the available correction profiles worsened the right-hand aggregate error. Correction remains available as an explicit opt-in for controlled experiments. CPU palm detection still dominates latency. The dual-halves NPU mode is faster because it removes palm detection, but it is a geometric approximation and should be evaluated under the target camera setup. The experimental palm-detection `.dxnn` path proves that palm inference can execute on the NPU, but its current output/postprocess behavior prevents accepted detections and skips the hand-landmark stage.
 
 ### 5.2 User Interface
 
@@ -262,7 +266,9 @@ For that reason, four runtime configurations were evaluated rather than a single
 | `cpu` / MediaPipe | End-to-end CPU reference using MediaPipe's built-in palm and hand stack | Establishes the simplest robust baseline and verifies that the musical logic works without model-conversion dependencies |
 | `cpu-baseline` | Palm TFLite + hand landmark TFLite, both on CPU | Uses the same two-stage palm→ROI→hand structure as `npu-full`, so it isolates whether replacing only hand inference with NPU is beneficial |
 | `npu-full` | Palm TFLite on CPU + hand landmark `.dxnn` on NPU | Tests the intended accurate hybrid edge-AI pipeline while preserving reliable float32 palm detection |
+| `npu-full --palm-dxnn ...` | Palm `.dxnn` on NPU + hand landmark `.dxnn` on NPU if a palm is accepted | Tests the desired full-NPU direction and exposes the current palm-detection failure mode |
 | `npu` dual-halves | No palm detector; screen split into two approximate hand regions; hand landmark `.dxnn` on NPU | Estimates the low-latency lower bound when palm detection is removed, useful for live demos but less robust to hand placement |
+| `pinto-cpu` | Palm TFLite on CPU + PINTO sparse hand landmark ONNX on CPU | Tests whether the PINTO hand-landmark model can be adopted before a `.dxnn` compile is available |
 
 The main evaluation metric in this report is **vision-loop latency**: time spent in camera-frame processing, palm/hand inference, ROI handling, and landmark production before the audio trigger logic. This is not a full acoustic end-to-end latency measurement. The target interactive frame budget is 16.7 ms for 60 FPS, while the final acoustic measurement should separately report motion-to-sound latency.
 
@@ -272,12 +278,12 @@ The hardware/software environment for the recorded prototype measurements was:
 |------|-------|
 | Board | Orange Pi 5 Plus (RK3588, aarch64) |
 | OS / Python | Linux, Python 3.10.12 |
-| DX-RT / `dx_engine` [5] | 1.1.4 |
-| DX-COM [5] | v2.1.0-rc.4 on external compile server |
+| DX-RT / `dx_engine` [5] | DXRT v3.2.0 observed through `dxrt-cli`; NPU driver v2.1.0; firmware v2.5.0 |
+| DX-COM [5] | Existing MediaPipe `.dxnn` compiled with v2.1.0-rc.4 metadata; PINTO compile attempt blocked by external server timeout |
 | Camera | USB camera, 640×480 |
 | Offline dataset | 90 captured frames in `dataset/frame_*.png` |
 
-The palm detector was also tested as an NPU `.dxnn` candidate. Although the NPU palm model was fast at roughly 12 ms, INT8 quantization damaged the score head: ONNX-to-NPU score correlation was approximately -0.11, making real hand detection unreliable. Therefore, all accurate palm-based configurations use CPU TFLite palm detection, and palm detection remains the main latency bottleneck.
+The palm detector was also tested as an NPU `.dxnn` candidate. The NPU palm model is fast, with repeated dataset runs around 10.4-11.2 ms, and `dxtop` showed visible NPU use during the palm-NPU load. However, the benchmark profile consistently reported `hand=0.00 ms`, meaning no palm passed the current detection acceptance path and the hand-landmark model was never invoked. Therefore, all accurate palm-based configurations use CPU TFLite palm detection, and palm detection remains the main latency bottleneck.
 
 ![Figure 9. Backend latency comparison generated programmatically for this report.](figures/backend_latency.png)
 
@@ -313,11 +319,11 @@ The latest validation run produced:
 | Test group | Result |
 |------------|--------|
 | Python syntax check | Passed |
-| Unit tests | 38/38 passed |
+| Unit tests | 48/48 passed |
 | Palm decode tests | 15/15 passed |
 | Dataset benchmark smoke | Skipped intentionally in the portable validation run |
 
-The unit tests cover default piano mapping, synthetic audio duration, pad-zone generation, pad JSON validation, instrument slot validation, strike detector thresholds, middle-finger sensitivity, cooldown behavior, ROI helpers, benchmark helper functions, dataset capture indexing, and the guided evaluation cue/matching/output helpers.
+The unit tests cover default piano mapping, synthetic audio duration, pad-zone generation, pad JSON validation, instrument slot validation, strike detector thresholds, middle-finger sensitivity, cooldown behavior, ROI helpers, benchmark helper functions, backend CLI defaults, dataset capture indexing, and the guided evaluation cue/matching/output helpers.
 
 ### 7.3 Guided Live Evaluation Results
 
@@ -349,16 +355,18 @@ The drum-pad interface performed better than the piano interface because drum mo
 
 ### 7.4 Backend Performance Summary
 
-The table below reports the high-level latency comparison for the four evaluated runtime configurations. The `cpu` row is a practical reference path. The `cpu-baseline` and `npu-full` rows form the controlled CPU-vs-NPU comparison because they share the same palm→ROI→hand pipeline and differ only in hand landmark inference. The `npu` dual-halves row is not an accuracy-equivalent baseline; it is a low-latency approximation that removes palm detection to estimate the best-case live-demo path.
+The table below reports the high-level latency comparison for the evaluated runtime configurations. The `cpu` row is a practical reference path. The `cpu-baseline` and default `npu-full` rows form the controlled CPU-vs-NPU comparison because they share the same palm→ROI→hand pipeline and differ primarily in hand landmark inference. The `npu-full --palm-dxnn` row is not a valid hand-tracking result; it is included because it directly measures the desired palm-on-NPU direction and shows why it is not yet usable.
 
-| Backend | Palm stage | Hand stage | Approx. total for 2 hands | Interpretation |
-|---------|-----------:|-----------:|--------------------------:|----------------|
-| `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | Simple CPU-only functional baseline; no extra model files required |
-| `cpu-baseline` (TFLite) | ~95 ms | ~5 ms | ~105 ms | Same two-stage structure as `npu-full`; isolates the hand-landmark accelerator comparison |
-| `npu-full` (TFLite + NPU) | ~95 ms | ~8 ms | ~111 ms | Accurate hybrid path, but CPU palm detection dominates total time |
-| `npu` dual-halves | 0 ms | ~8 ms × 2 | ~16 ms | Fastest path and close to 60 FPS budget, but it approximates hand location without palm detection |
+| Backend | Recorded latency / profile | Interpretation |
+|---------|----------------------------|----------------|
+| `cpu` (MediaPipe) | about 35 ms in prior live-oriented measurement | Simple CPU-only functional baseline; no extra model files required |
+| `cpu-baseline` (TFLite) | mean 84.40 ms; palm 39.26 ms + hand 44.80 ms | Same two-stage structure as `npu-full`; isolates the hand-landmark accelerator comparison |
+| `npu-full` default | mean 50.10-50.32 ms; palm about 40.7 ms + hand about 9.1 ms | Valid accurate hybrid path; NPU accelerates hand landmarks, but CPU palm detection dominates total time |
+| `npu-full --palm-dxnn models/vendor/palm_detection_lite.dxnn` | repeated means 10.39 ms and 10.88 ms; profile `hand=0.00 ms` | Palm `.dxnn` executes and is fast, but current output/postprocess path accepts no palms, so this is not a working full-NPU tracker |
+| `npu` dual-halves | about 16 ms in prior live-oriented measurement | Fastest path and close to the 60 FPS budget, but it approximates hand location without palm detection |
+| `pinto-cpu` | 10-frame smoke mean 88.91 ms; palm 40.19 ms + hand 48.27 ms | PINTO ONNX adoption works on CPU, but it is slower than the current NPU hand-landmark path |
 
-The result has two important implications. First, moving only the hand landmark model to NPU is insufficient when CPU palm detection still dominates the accurate pipeline. Second, the low-latency dual-halves path is valuable for demonstrations, but it should not be treated as accuracy-equivalent to the palm-based configurations because it assumes stable hand placement.
+The result has three important implications. First, moving only the hand landmark model to NPU helps substantially, reducing the TFLite-style hand stage from 44.80 ms to about 9.13 ms. Second, this is still insufficient when CPU palm detection remains about 40 ms. Third, the palm `.dxnn` path consumes NPU and is fast, but it cannot be used for the final instrument until its detections are accepted and the hand-landmark stage runs.
 
 ### 7.5 Offline Dataset Benchmark Summary
 
@@ -368,26 +376,27 @@ A 90-frame offline benchmark was run to compare the two structurally matched pip
 |---------------|-------------:|------------:|-------------------|----------------|
 | `cpu-baseline`, palm every frame | 84.40 ms | 86.78 ms | palm 39.26 ms + hand 44.80 ms | CPU TFLite reference for the two-stage pipeline |
 | `npu-full`, palm every frame | 50.32 ms | 54.52 ms | palm 40.93 ms + hand 9.13 ms | Same palm/ROI path, but hand inference is moved to NPU |
+| `npu-full`, repeated 5-run measurement | 50.10 ms | 51.71 ms | palm 40.69 ms + hand 9.12 ms | Confirms the stable default CPU-palm + NPU-hand profile |
+| `npu-full --palm-dxnn`, repeated run 1 | 10.39 ms | 12.84 ms | palm 10.34 ms + hand 0.00 ms | Palm NPU path runs, but no accepted palms reach the hand stage |
+| `npu-full --palm-dxnn`, repeated run 2 | 10.88 ms | 13.13 ms | palm 10.82 ms + hand 0.00 ms | Same failure mode reproduced |
+| `pinto-cpu` (10-frame smoke) | 88.91 ms | 97.13 ms | palm 40.19 ms + hand 48.27 ms | PINTO ONNX CPU path is functional but not a latency win |
 | `npu-full`, `--palm-redetect-every 5` (20-frame smoke) | 15.29 ms | 50.96 ms | palm frames 3/20, tracking frames 17/20 | Shows latency potential of palm skipping, but drift and hit accuracy must be verified |
-| `npu-full`, `--async-palm` smoke | 10–20 ms range | input-pacing dependent | tracking with asynchronous palm refresh | Experimental path; live stability still needs validation |
+| `npu-full`, `--async-palm` smoke | 10-20 ms range | input-pacing dependent | tracking with asynchronous palm refresh | Experimental path; live stability still needs validation |
 
 The matched `cpu-baseline` vs. `npu-full` comparison shows that the NPU substantially reduces hand-landmark time in the TFLite-style pipeline (44.80 ms to 9.13 ms in the recorded 90-frame run). However, palm detection remains about 40 ms, so the accurate pipeline still exceeds the 60 FPS target unless palm frequency is reduced or palm detection is accelerated.
 
-Landmark accuracy was estimated by comparing `npu-full` landmarks against the CPU-baseline reference in normalized image coordinates.
+Landmark accuracy was estimated by comparing `npu-full` landmarks against the CPU-baseline reference in normalized image coordinates. The latest default is the uncorrected NPU landmark output; correction is no longer applied automatically.
 
-| Hand | Matched frames | Mean error over 21 points | Mean fingertip error | Mean max error | Worst max error |
-|------|---------------:|--------------------------:|---------------------:|---------------:|----------------:|
-| Right | 90 | 0.0270 | 0.0336 | 0.0532 | 0.1593 |
-| Left | 83 | 0.0256 | 0.0353 | 0.0457 | 0.0734 |
+| Hand | Mean error over 21 points | Mean fingertip error | Mean max error | Worst max error |
+|------|--------------------------:|---------------------:|---------------:|----------------:|
+| Right | 0.0220 | 0.0267 | 0.0439 | 0.1316 |
+| Left | 0.0151 | 0.0225 | 0.0304 | 0.0547 |
 
-An affine correction model was then fit to reduce systematic NPU landmark bias. On the same 90-frame training set, the corrected errors were:
+Two correction approaches were tested. The dataset correction worsened the right-hand mean error to 0.0314, and a bias correction worsened the right-hand mean error to 0.0290 while only slightly improving some left-hand values. Because this trade-off is not robust, the runtime default was changed to leave landmark correction disabled. Correction remains available as an explicit experimental option when a controlled calibration set is available.
 
-| Hand | Matched frames | Mean error over 21 points | Mean fingertip error | Mean max error | Worst max error |
-|------|---------------:|--------------------------:|---------------------:|---------------:|----------------:|
-| Right | 90 | 0.0102 | 0.0112 | 0.0223 | 0.1701 |
-| Left | 83 | 0.0092 | 0.0090 | 0.0193 | 0.0437 |
+The current conclusion is that the hand-landmark `.dxnn` is callable and correctly wired at the IO level, but its INT8 output distribution differs enough from the CPU float/TFLite reference to affect visible landmark accuracy. This is a model-conversion and quantization quality issue rather than a total runtime failure.
 
-The correction reduces average and fingertip error on the training capture, but it should not be reported as a generalized accuracy improvement until it is evaluated on a separate hold-out capture with different lighting, hand size, hand pose, and camera distance.
+The PINTO sparse hand-landmark ONNX model was also evaluated as an adoption candidate [6], [7]. In the existing palm/ROI flow, it produced mixed accuracy: worse right-hand agreement than the current default NPU hand model, but better left-hand fingertip agreement in the small replay comparison. The model is therefore useful as an experimental candidate, but not yet a replacement for the default hand-landmark `.dxnn`.
 
 ---
 
@@ -407,7 +416,9 @@ The final piano mapping follows the user-specified convention: left-hand thumb i
 
 ### 8.4 Edge AI Trade-Offs
 
-The NPU accelerates hand landmark inference, but a full robust pipeline also needs palm detection. In the experiments reported above, the NPU palm candidate was fast but unusable because INT8 quantization damaged detection scores, leaving CPU TFLite palm detection in the accurate pipeline. Consequently, the most accurate NPU-full backend can be slower than expected because palm detection dominates. This suggests that future work should focus on either improving palm model quantization, replacing the detector, or reducing palm frequency while controlling drift.
+The NPU accelerates hand landmark inference, but a full robust pipeline also needs palm detection. In the experiments reported above, the NPU palm candidate was fast and used the NPU visibly, but it was unusable as a tracker because no accepted palms reached the hand landmark stage. Consequently, the most accurate `npu-full` backend keeps CPU TFLite palm detection, and total latency is dominated by that CPU palm stage. This suggests that future work should focus on debugging palm `.dxnn` score/postprocess behavior, replacing the detector, or reducing palm frequency while controlling drift.
+
+The PINTO sparse hand-landmark model is a plausible adoption candidate because a CPU ONNX version is now runnable in the same application path [6], [7]. However, deployment to the DEEPX NPU is blocked until a `.dxnn` compile succeeds. During this session, the SNU compile server at `43.203.143.33:443` timed out, and local compilation on the Orange Pi was not practical because the available DX-COM package path targets `x86_64/amd64` while the board is `aarch64` [5], [9]. The STMicro native-INT8 hand-landmarks model is also a candidate for future testing, but it has the same practical requirement: it must be compiled to a DEEPX-compatible `.dxnn` before it can be used on the NPU [8].
 
 ---
 
@@ -420,7 +431,10 @@ The current prototype has several limitations:
 - **Guided hit-accuracy results are preliminary**: the pilot run has one performer and one slow tempo, and piano accuracy remains low without further calibration.
 - **Depth ambiguity** remains because the system uses a single RGB camera.
 - **Lighting and background sensitivity** may affect landmark stability.
-- **NPU-full accuracy and latency** remain limited by CPU palm detection.
+- **NPU-full latency** remains limited by CPU palm detection in the valid default path.
+- **Palm detection on NPU is not yet valid**: the palm `.dxnn` path is fast and uses NPU, but currently produces no accepted palms in the benchmark path.
+- **Hand-landmark NPU accuracy is still below the CPU reference** in some cases due to INT8 output drift, and automatic correction is not robust enough to enable by default.
+- **PINTO NPU deployment is blocked** until the ONNX model can be compiled to `.dxnn`.
 - **Tactile feedback is absent**, so timing may feel different from physical instruments.
 
 ---
@@ -429,20 +443,22 @@ The current prototype has several limitations:
 
 Recommended next steps are:
 
-1. Measure E2E audio latency using a high-speed camera and synchronized audio waveform.
-2. Run guided hit-accuracy trials for both modes at multiple tempos.
-3. Improve piano-specific calibration for finger identity, screen-side hand mapping, and per-user strike thresholds.
-4. Add per-user calibration for pad positions, handedness, and strike thresholds.
-5. Investigate palm detector alternatives suitable for NPU deployment.
-6. Add optional MIDI output so the system can drive external instruments.
-7. Expand the guided evaluation to more participants and longer randomized cue sequences.
-8. Conduct a small user study comparing playability of drum and piano modes.
+1. Debug palm `.dxnn` outputs against CPU TFLite palm tensors so the NPU palm path can produce accepted detections and nonzero hand-stage time.
+2. Compile the PINTO sparse hand-landmark ONNX model to `.dxnn` when the SNU compile server or an x86_64 DX-COM environment is available.
+3. Re-test the STMicro native-INT8 hand-landmarks model after a working compile route exists.
+4. Measure E2E audio latency using a high-speed camera and synchronized audio waveform.
+5. Run guided hit-accuracy trials for both modes at multiple tempos.
+6. Improve piano-specific calibration for finger identity, screen-side hand mapping, and per-user strike thresholds.
+7. Add per-user calibration for pad positions, handedness, and strike thresholds.
+8. Add optional MIDI output so the system can drive external instruments.
+9. Expand the guided evaluation to more participants and longer randomized cue sequences.
+10. Conduct a small user study comparing playability of drum and piano modes.
 
 ---
 
 ## 11. Conclusion
 
-PANDA demonstrates a complete camera-based musical interface that converts hand motion into playable drum and piano events. The final implementation includes a pad-based drum interface, a corrected piano note mapping, low-latency audio playback, generated documentation diagrams, and a repeatable validation suite. The project shows that edge AI hand tracking can support expressive contactless musical interaction, but also highlights the importance of robust strike detection, accurate hand localization, and careful latency measurement. With further evaluation and NPU optimization, the system can serve as a strong foundation for embedded AI musical interfaces and real-time gesture-control demonstrations.
+PANDA demonstrates a complete camera-based musical interface that converts hand motion into playable drum and piano events. The final implementation includes a pad-based drum interface, a corrected piano note mapping, low-latency audio playback, generated documentation diagrams, multiple hand-tracking backends, and a repeatable validation suite. The project shows that edge AI hand tracking can support expressive contactless musical interaction, but it also clarifies the main deployment constraint: moving hand landmarks to the NPU is effective, while a robust full-NPU pipeline still depends on solving palm detection and model-quantization behavior. With further evaluation, palm-detector repair, and NPU model compilation, the system can serve as a strong foundation for embedded AI musical interfaces and real-time gesture-control demonstrations.
 
 ---
 
@@ -463,3 +479,11 @@ FILLME: course, advisor, lab, hardware provider, or collaborator acknowledgments
 [4] pygame developers, “Pygame front page—pygame v2.6.0 documentation,” pygame. [Online]. Available: https://www.pygame.org/docs/. Accessed: May 27, 2026.
 
 [5] DEEPX, “Get Started,” DEEPX Developer. [Online]. Available: https://developer.deepx.ai/article/get-started/. Accessed: May 27, 2026.
+
+[6] PINTO0309, “033 Hand Detection and Tracking,” PINTO model zoo. [Online]. Available: https://github.com/PINTO0309/PINTO_model_zoo/tree/main/033_Hand_Detection_and_Tracking. Accessed: June 16, 2026.
+
+[7] PINTO0309, “hand-gesture-recognition-using-onnx,” GitHub. [Online]. Available: https://github.com/PINTO0309/hand-gesture-recognition-using-onnx. Accessed: June 16, 2026.
+
+[8] STMicroelectronics, “hand_landmarks,” Hugging Face. [Online]. Available: https://huggingface.co/STMicroelectronics/hand_landmarks. Accessed: June 16, 2026.
+
+[9] Seoul National University / DX-AS course material, “DX-AS NPU compile and inference practice,” Google Sites. [Online]. Available: https://sites.google.com/view/dxs-2603-snu/home/%EC%8B%A4%EC%8A%B55-dx-as-npu-%EC%BB%B4%ED%8C%8C%EC%9D%BC-%EB%B0%8F-%EC%B6%94%EB%A1%A0-%EC%8B%A4%EC%8A%B5. Accessed: June 16, 2026.
