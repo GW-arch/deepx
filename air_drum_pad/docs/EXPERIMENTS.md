@@ -79,7 +79,7 @@
 
 ### 8.2 Palm Detection — NPU (.dxnn) vs CPU (TFLite)
 
-> **결론:** Palm .dxnn은 속도는 빠르나 INT8 양자화로 **score head가 파괴**되어 (ONNX↔NPU 상관 -0.11) 실제 손 감지가 불가합니다. 아래 레이턴시 수치는 참고용이며, **실사용은 TFLite (CPU)** 입니다.
+> **결론:** Palm .dxnn은 속도는 빠르나 INT8 양자화로 **score head가 파괴**되어 실제 손 감지가 불가합니다. TFLite→ONNX export는 정상이고, 실패 지점은 ONNX→DXNN compile/runtime output입니다. 아래 레이턴시 수치는 참고용이며, **실사용은 TFLite (CPU)** 입니다.
 
 **Palm Detection 레이턴시 (참고):**
 
@@ -87,6 +87,33 @@
 |-------------|----------:|------|
 | NPU (.dxnn) | ~10.4-11.2 ms | score 파괴로 **사용 불가**; no accepted palms, hand stage `0.00 ms` |
 | CPU (TFLite XNNPACK) | ~39-42 ms | **실사용** (float32, 정확) |
+
+**Palm .dxnn root-cause 진단 (2026-06-16):**
+
+```bash
+python3 tools/debug_palm_outputs.py --backend all \
+  --image dataset/frame_000.png --score-thresh 0.5 \
+  --dxnn-input-variant nhwc_u8 --json /tmp/palm_debug_000_all_corr.json
+python3 tools/debug_palm_outputs.py --backend dxnn \
+  --image dataset/frame_000.png --score-thresh 0.5 \
+  --dxnn-input-variant all --json /tmp/palm_debug_000_variants_thr05.json
+python3 tools/benchmark_dataset.py --backends npu-full \
+  --palm-dxnn models/vendor/palm_detection_lite.dxnn --limit 10 --warmup 0
+```
+
+| 비교 | TFLite | ONNX | DXNN |
+|------|-------:|-----:|-----:|
+| `frame_000` accepted detections @0.5 | 2 | 2 | 0 |
+| `frame_000` score logit max | +1.8786 | +1.8786 | -4.7578 |
+| `frame_000` best TFLite anchor score in candidate | +1.8786 | +1.8786 | -29.3477 |
+| Score correlation vs TFLite | reference | 0.999999999998 | -0.1457 |
+| Box correlation vs TFLite | reference | 0.999999999999 | 0.8201 |
+| `frame_060` accepted detections @0.5 | 3 | 3 | 0 |
+| `frame_060` score correlation vs TFLite | reference | 0.999999999998 | -0.1900 |
+
+`dx_engine` reports the compiled palm `.dxnn` input as `[1, 192, 192, 3] uint8`, so the runtime NHWC uint8 feed matches the compiled model metadata. Testing `nhwc_u8`, `nchw_u8`, `nhwc_f32_0_255`, `nchw_f32_0_255`, `nhwc_f32_0_1`, and `nchw_f32_0_1` produced no accepted detections at threshold 0.5. The failure is therefore not a simple runtime layout or threshold issue. It is a DX-COM quantization/output-quality failure in the palm model: the score head is shifted deeply negative, and the best TFLite anchor is strongly suppressed in DXNN. Lowering the threshold cannot recover a reliable detector because the score ranking itself is not correlated with the float reference.
+
+The benchmark path confirms the same failure mode: `python3 tools/benchmark_dataset.py --backends npu-full --palm-dxnn models/vendor/palm_detection_lite.dxnn --limit 10 --warmup 0` measured `palm=8.02 ms`, `hand=0.00 ms`, and all frames stayed in `mode='palm'`.
 
 ### 8.3 End-to-End 레이턴시 비교
 

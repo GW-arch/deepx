@@ -110,14 +110,14 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --landmark-c
 - [x] 전처리: letterbox NHWC [0,1] → ×255 → uint8 (Div(255) NPU 내장).
 - [x] `--palm-dxnn` 명시 실험 경로 지원. 초기에는 `.dxnn` 자동 탐색을 시도했으나, score head 양자화 실패 확정 후 기본 자동 탐색은 TFLite 우선으로 변경.
 - [x] `--palm-dxnn` CLI 플래그 (`main.py`).
-- [x] 벤치마크: Palm NPU 12 ms vs TFLite CPU 95 ms (~8× 속도 개선).
-- [x] **양자화 품질 검증: score head 파괴 확인** — ONNX↔NPU score 상관 -0.11, box 상관 0.81.
+- [x] 벤치마크: Palm NPU repeated dataset runs 약 8-11 ms vs TFLite CPU 약 39-42 ms. 속도는 빠르지만 accepted palm 0으로 hand stage가 실행되지 않음.
+- [x] **양자화 품질 검증: score head 파괴 확인** — TFLite↔ONNX score/box 상관은 거의 1.0이나, DXNN score 상관은 `frame_000` 기준 -0.1457, `frame_060` 기준 -0.1900. Box 상관은 약 0.82이나 box MAE가 약 21 raw units로 큼.
   - ema / minmax calibration, `--aggressive_partitioning` (0 CPU groups), opt_level 0/1 모두 실패.
   - **최종 결론: Palm .dxnn은 사용 불가. TFLite (CPU, float32) 고정.**
 
 ## 리스크·메모
 
-- **Palm INT8 양자화 실패 (확정):** DX-COM으로 palm_detection_lite.onnx를 INT8 양자화하면 **score head가 파괴**됩니다 (ONNX↔NPU score 상관 -0.11, max sigmoid 0.01). Box head는 정상 (상관 0.81). ema/minmax calibration, `--aggressive_partitioning`, opt_level 0/1 모든 조합에서 실패. 원인: score head의 좁은 동적 범위 (~[-20, +3]) 가 INT8 256레벨로 표현 불가. **Palm은 TFLite (CPU, float32)로 고정.**
+- **Palm INT8 양자화 실패 (확정):** DX-COM으로 palm_detection_lite.onnx를 INT8 양자화하면 **score head가 파괴**됩니다. 2026-06-16 재진단에서 TFLite→ONNX export는 정상(score/box correlation ~1.0)이고, DXNN만 score correlation -0.1457(`frame_000`) / -0.1900(`frame_060`)로 무너졌습니다. `dx_engine` metadata는 `[1,192,192,3] uint8` 입력을 보고했고 NHWC/NCHW, uint8/float32 variants 모두 accepted detection 0이라 단순 입력 layout 문제가 아닙니다. **Palm은 TFLite (CPU, float32)로 고정.**
 - **`tflite2onnx`로 palm TFLite 변환**: `tools/dequant_palm_fp32.py`로 FP16→FP32 디퀀트 후 변환 성공.
 - **Palm TFLite**: `pip show mediapipe` 설치 경로의 `mediapipe/modules/palm_detection/palm_detection_lite.tflite` (스크립트가 자동 복사).
 - **DX-COM**: SNU 서버 (user12, port 443) 에서 컴파일. aarch64 보드에서는 직접 컴파일 불가.

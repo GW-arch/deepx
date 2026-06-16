@@ -285,7 +285,7 @@ The hardware/software environment for the recorded prototype measurements was:
 | Camera | USB camera, 640×480 |
 | Offline dataset | 90 captured frames in `dataset/frame_*.png` |
 
-The palm detector was also tested as an NPU `.dxnn` candidate. The NPU palm model is fast, with repeated dataset runs around 10.4-11.2 ms, and `dxtop` showed visible NPU use during the palm-NPU load. However, the benchmark profile consistently reported `hand=0.00 ms`, meaning no palm passed the current detection acceptance path and the hand-landmark model was never invoked. Therefore, all accurate palm-based configurations use CPU TFLite palm detection, and palm detection remains the main latency bottleneck.
+The palm detector was also tested as an NPU `.dxnn` candidate. The NPU palm model is fast, with repeated dataset runs around 8-11 ms, and `dxtop` showed visible NPU use during the palm-NPU load. However, the benchmark profile consistently reported `hand=0.00 ms`, meaning no palm passed the current detection acceptance path and the hand-landmark model was never invoked. A tensor-level diagnostic separated the failure boundary: TFLite and ONNX outputs matched almost exactly on `dataset/frame_000.png` (score correlation approximately 1.0, box correlation approximately 1.0), while DXNN scores were anti-correlated with the TFLite reference (score correlation -0.1457) and the best TFLite anchor score dropped from `+1.8786` to `-29.3477` in DXNN. DXNN metadata reports `[1,192,192,3] uint8` input, and testing NHWC/NCHW plus uint8/float32 input variants did not recover detections. Therefore, all accurate palm-based configurations use CPU TFLite palm detection, and palm detection remains the main latency bottleneck.
 
 ![Figure 9. Backend latency comparison generated programmatically for this report.](figures/backend_latency.png)
 
@@ -450,7 +450,7 @@ The final piano mapping follows the user-specified convention: left-hand thumb i
 
 ### 8.4 Edge AI Trade-Offs
 
-The NPU accelerates hand landmark inference, but a full robust pipeline also needs palm detection. In the experiments reported above, the NPU palm candidate was fast and used the NPU visibly, but it was unusable as a tracker because no accepted palms reached the hand landmark stage. Consequently, the most accurate `npu-full` backend keeps CPU TFLite palm detection, and total latency is dominated by that CPU palm stage. This suggests that future work should focus on debugging palm `.dxnn` score/postprocess behavior, replacing the detector, or reducing palm frequency while controlling drift.
+The NPU accelerates hand landmark inference, but a full robust pipeline also needs palm detection. In the experiments reported above, the NPU palm candidate was fast and used the NPU visibly, but it was unusable as a tracker because no accepted palms reached the hand landmark stage. The latest tensor diagnostic indicates that the TFLite-to-ONNX export and palm decoder are correct; the failure appears after DX-COM compilation, where the INT8 DXNN score head is shifted deeply negative and loses the TFLite score ranking. Consequently, the most accurate `npu-full` backend keeps CPU TFLite palm detection, and total latency is dominated by that CPU palm stage. This suggests that future work should focus on recompiling or replacing the palm detector, improving calibration for the palm score head, or reducing palm frequency while controlling drift.
 
 The PINTO sparse hand-landmark model is a plausible adoption candidate because both CPU ONNX and DEEPX DXNN versions are now runnable in the same application path [6], [7]. The main compiler caveat is that the original dynamic and fixed-shape ONNX variants failed DX-COM lowering because `onnx.Round` was unsupported; replacing the final handedness `Round` with `Identity` allowed compilation, with the runtime applying a `>=0.5` threshold. The SNU compile server at `43.203.143.33:443` timed out during this session, and local compilation on the Orange Pi was not practical because the available DX-COM package path targets `x86_64/amd64` while the board is `aarch64` [5], [9]. The successful compile was performed on an x86_64 Ubuntu PC and then transferred to the board. The STMicro native-INT8 hand-landmarks model is still a candidate for future testing, but it has the same practical requirement: it must be compiled to a DEEPX-compatible `.dxnn` before it can be used on the NPU [8].
 
@@ -477,7 +477,7 @@ The current prototype has several limitations:
 
 Recommended next steps are:
 
-1. Debug palm `.dxnn` outputs against CPU TFLite palm tensors so the NPU palm path can produce accepted detections and nonzero hand-stage time.
+1. Recompile or replace the palm detector so the NPU palm path produces accepted detections and nonzero hand-stage time; current evidence points to DX-COM INT8 score-head degradation rather than TFLite export, ONNX runtime, decoder, or input-layout error.
 2. Expand the `pinto-npu` benchmark beyond the 10-frame smoke test and evaluate whether calibration or threshold tuning can make it competitive with the default hand-landmark `.dxnn`.
 3. Re-test the STMicro native-INT8 hand-landmarks model after a working compile route exists.
 4. Measure E2E audio latency using a high-speed camera and synchronized audio waveform.

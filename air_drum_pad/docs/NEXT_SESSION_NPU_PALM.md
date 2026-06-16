@@ -29,11 +29,11 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --landmark-c
 - **커밋:** 82aab86 (`main`) — `FullNpuHandsTracker` 가 `palm_dxnn_path` / `palm_tflite_path` 둘 다 지원
   - `--palm-dxnn` CLI 플래그 추가 (`main.py`)
   - 당시 `create_tracker()` 자동 탐색은 `.dxnn` → `.tflite` 우선순위였으나, 2026-05-08 이후 기본은 TFLite 우선으로 변경
-  - Palm .dxnn 레이턴시: **12 ms** (vs TFLite CPU 95 ms) — 속도는 ~8× 빠름
-  - **그러나 Palm .dxnn INT8 양자화로 score head 파괴** — ONNX↔NPU score 상관 -0.11, max sigmoid 0.01 vs ONNX 0.90
+  - Palm .dxnn 레이턴시: repeated dataset runs 약 **8-11 ms** (vs TFLite CPU 약 39-42 ms) — 속도는 빠르지만 accepted palm 0
+  - **그러나 Palm .dxnn INT8 양자화로 score head 파괴** — TFLite↔ONNX score/box 상관은 거의 1.0이나, DXNN score 상관은 `frame_000` 기준 -0.1457, `frame_060` 기준 -0.1900. TFLite best score `+1.8786`가 DXNN 같은 anchor에서 `-29.3477`로 밀림.
   - 시도한 조합: ema/minmax calibration, `--aggressive_partitioning` (0 CPU groups), `--opt_level 0`/`1` — 모두 실패
   - **결론: Palm detection은 TFLite (CPU, float32) 로 고정**, Hand landmark만 NPU
-  - `_run_palm()` .dxnn 경로: NHWC uint8 입력 → `dx_engine.InferenceEngine.run()`
+  - `_run_palm()` .dxnn 경로: NHWC uint8 입력 → `dx_engine.InferenceEngine.run()`. `dx_engine` metadata도 `[1,192,192,3] uint8` 입력을 보고하므로 현재 accepted palm 0 문제는 단순 runtime layout mismatch가 아님.
   - `close()` 에서 `palm_ie.dispose()` 호출
   - 디스플레이 `cv2.flip(frame, 1)` 추가 (셀카 미러)
   - `os.chdir(_SCRIPT_DIR)` 추가 (상대 경로 안정화)
