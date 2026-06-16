@@ -249,21 +249,46 @@ def strike_logic() -> None:
 
 
 def latency_chart() -> None:
-    labels = ["CPU\nMediaPipe", "CPU-baseline\nTFLite", "NPU-full\nPalm CPU + Hand NPU", "NPU dual-halves\nHand NPU"]
-    values = [35, 105, 111, 16]
-    colors = ["#60a5fa", "#f59e0b", "#a78bfa", "#34d399"]
+    labels = [
+        "CPU\nMediaPipe",
+        "CPU-baseline\nTFLite",
+        "PINTO CPU\nPalm CPU + ONNX",
+        "NPU-full\nPalm CPU + Hand NPU",
+        "PINTO NPU\nPalm CPU + DXNN",
+        "Palm NPU\ninvalid tracker",
+        "NPU dual-halves\nHand NPU",
+    ]
+    values = [35.0, 84.4, 88.91, 50.32, 50.48, 10.88, 16.0]
+    colors = ["#60a5fa", "#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#94a3b8", "#34d399"]
 
-    fig, ax = plt.subplots(figsize=(10.5, 5.2))
+    fig, ax = plt.subplots(figsize=(13.0, 5.4))
     bars = ax.bar(labels, values, color=colors, edgecolor="#1f2937", linewidth=1.0)
     ax.set_ylabel("Approx. end-to-end vision latency (ms)")
     ax.set_title("Backend Latency Comparison from Prototype Measurements", fontsize=15, fontweight="bold")
+    ax.set_ylim(0, max(values) + 18)
     ax.axhline(16.7, color="#ef4444", linestyle="--", linewidth=1.3, label="60 FPS frame budget (16.7 ms)")
     ax.legend(loc="upper right")
     ax.grid(axis="y", color="#e5e7eb")
     ax.set_axisbelow(True)
     for bar, value in zip(bars, values):
-        ax.text(bar.get_x() + bar.get_width() / 2, value + 3, f"{value} ms", ha="center", va="bottom", fontsize=10)
-    ax.text(0.5, -0.22, "Four runtime configurations are compared to isolate palm detection, hand-landmark inference, and NPU dispatch effects; final audio latency still requires manual high-speed-camera capture.", transform=ax.transAxes, ha="center", fontsize=9, color="#475569")
+        ax.text(
+            bar.get_x() + bar.get_width() / 2,
+            value + 2.5,
+            f"{value:g} ms",
+            ha="center",
+            va="bottom",
+            fontsize=9,
+        )
+    ax.text(
+        0.5,
+        -0.25,
+        "PINTO CPU/NPU rows are included; the Palm NPU row is fast but invalid because no palms are accepted. Final audio latency still requires manual high-speed-camera capture.",
+        transform=ax.transAxes,
+        ha="center",
+        fontsize=9,
+        color="#475569",
+    )
+    fig.subplots_adjust(bottom=0.26)
     fig.savefig(OUT / "backend_latency.png", dpi=180, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
