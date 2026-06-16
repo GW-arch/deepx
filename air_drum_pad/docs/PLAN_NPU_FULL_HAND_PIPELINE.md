@@ -1,13 +1,15 @@
 # 계획: Palm(NPU) + Hand landmark(NPU) — MediaPipe Hands 동급 파이프라인
 
-**다음 세션에서 바로 실험할 순서:** [`NEXT_SESSION_NPU_PALM.md`](NEXT_SESSION_NPU_PALM.md) (Step A~F, 명령어·완료 기준).
+> 2026-06-16 update: 이 문서는 구현 계획의 역사적 흐름을 보존합니다. 현재는 재컴파일한 palm `.dxnn` 후보가 board offline replay에서 accepted palm을 만들고 hand landmark stage까지 연결됩니다. 최신 수치와 checksum은 [`SESSION_2026_06_16_PALM_DXNN_LOCAL_RECOMPILE.md`](SESSION_2026_06_16_PALM_DXNN_LOCAL_RECOMPILE.md)를 기준으로 봅니다.
+
+**다음 세션에서 바로 실험할 순서:** live camera에서 `--palm-dxnn models/vendor/palm_detection_lite_minmax_local.dxnn` 안정성과 guided hit accuracy를 재측정.
 
 ## 목표
 
 | 단계 | 내용 |
 |------|------|
 | 최종 | 손 **검출(박스/키포인트)** 과 **21 랜드마크**를 모두 `.dxnn` + DX-RT로 돌리고, MediaPipe `hands` 그래프와 동일한 **전처리·앵커·NMS·letterbox 제거** 규칙을 Python에서 재현한다. |
-| 중간 | Palm은 TFLite(CPU)만 검증 → ONNX/DX-COM 성공 시 NPU로 이전. |
+| 중간 | Palm `.dxnn` offline replay 검증 완료 → live camera 안정성 및 hit accuracy 검증 필요. |
 
 ## 아키텍처 (MediaPipe `palm_detection_cpu.pbtxt` 기준)
 
@@ -85,7 +87,7 @@ flowchart LR
 - [x] `tools/benchmark_dataset.py`: `dataset/frame_*.png`를 카메라 대신 재생해 백엔드별 지연(mean/P95/min/max), palm/hand 세부 프로파일, 손별 landmark 오차를 출력.
 - [x] `FullNpuHandsTracker.last_profile`: 프레임별 `palm_ms`, `hand_ms`, `mode`(palm/tracking), 검출 수 기록.
 - [x] `--palm-redetect-every N` CLI 플래그: 기본 `0`(매 프레임 palm, 정확도 우선), `N>0`은 palm skip/ROI tracking 실험.
-- [x] `npu-full` 자동 palm 선택을 TFLite 우선으로 변경. Palm .dxnn은 score head 양자화 실패가 알려져 있으므로 `--palm-dxnn`을 명시한 실험에서만 사용.
+- [x] `npu-full` 자동 palm 선택을 TFLite 우선으로 유지. 재컴파일한 Palm `.dxnn` 후보는 `--palm-dxnn`을 명시한 full-NPU 실험에서 사용.
 - [x] `--async-palm` 실험 옵션: background thread에서 palm을 돌리고 메인 루프는 이전 ROI로 hand landmark를 계속 추적.
 - [x] `tools/sweep_palm_redetect.py`: `--palm-redetect-every` 값(예: 0,1,2,3,5,10)을 batch로 실행해 CSV/JSON 생성.
 - [x] `tools/benchmark_dataset.py --debug-dir`: landmark 오차가 큰 frame의 green/reference vs red/test overlay PNG와 manifest 저장.
@@ -104,20 +106,19 @@ python3 tools/calibrate_npu_landmarks.py --output models/npu_landmark_correction
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --landmark-correction models/npu_landmark_correction.dataset.json
 ```
 
-### Phase 6 — Palm NPU 통합 (속도 확인, 양자화 품질 실패)
+### Phase 6 — Palm NPU 통합 (offline replay 검증 완료)
 
 - [x] `FullNpuHandsTracker` 에 `palm_dxnn_path` 지원 — `dx_engine.InferenceEngine` 로 NPU 추론.
 - [x] 전처리: letterbox NHWC [0,1] → ×255 → uint8 (Div(255) NPU 내장).
-- [x] `--palm-dxnn` 명시 실험 경로 지원. 초기에는 `.dxnn` 자동 탐색을 시도했으나, score head 양자화 실패 확정 후 기본 자동 탐색은 TFLite 우선으로 변경.
+- [x] `--palm-dxnn` 명시 실험 경로 지원. 기본 live 자동 탐색은 TFLite 우선이고, full-NPU 후보는 명시 플래그로 선택.
 - [x] `--palm-dxnn` CLI 플래그 (`main.py`).
-- [x] 벤치마크: Palm NPU repeated dataset runs 약 8-11 ms vs TFLite CPU 약 39-42 ms. 속도는 빠르지만 accepted palm 0으로 hand stage가 실행되지 않음.
-- [x] **양자화 품질 검증: score head 파괴 확인** — TFLite↔ONNX score/box 상관은 거의 1.0이나, DXNN score 상관은 `frame_000` 기준 -0.1457, `frame_060` 기준 -0.1900. Box 상관은 약 0.82이나 box MAE가 약 21 raw units로 큼.
-  - ema / minmax calibration, `--aggressive_partitioning` (0 CPU groups), opt_level 0/1 모두 실패.
-  - **최종 결론: Palm .dxnn은 사용 불가. TFLite (CPU, float32) 고정.**
+- [x] 재컴파일한 `palm_detection_lite_minmax_local.dxnn` / `palm_detection_lite_ema_local.dxnn` board replay 검증.
+- [x] `frame_000` / `frame_060` tensor validation에서 accepted palm 생성 및 TFLite 대비 score/box correlation 확인.
+- [x] 90-frame replay에서 `npu-full --palm-dxnn` hand stage 연결 및 full-NPU latency 확인.
 
 ## 리스크·메모
 
-- **Palm INT8 양자화 실패 (확정):** DX-COM으로 palm_detection_lite.onnx를 INT8 양자화하면 **score head가 파괴**됩니다. 2026-06-16 재진단에서 TFLite→ONNX export는 정상(score/box correlation ~1.0)이고, DXNN만 score correlation -0.1457(`frame_000`) / -0.1900(`frame_060`)로 무너졌습니다. `dx_engine` metadata는 `[1,192,192,3] uint8` 입력을 보고했고 NHWC/NCHW, uint8/float32 variants 모두 accepted detection 0이라 단순 입력 layout 문제가 아닙니다. **Palm은 TFLite (CPU, float32)로 고정.**
+- **Palm NPU live stability 미측정:** offline replay에서는 full-NPU palm+hand path가 동작하지만, live camera motion/lighting/hand scale 변화에서 guided drum/piano hit accuracy를 다시 측정해야 합니다.
 - **`tflite2onnx`로 palm TFLite 변환**: `tools/dequant_palm_fp32.py`로 FP16→FP32 디퀀트 후 변환 성공.
 - **Palm TFLite**: `pip show mediapipe` 설치 경로의 `mediapipe/modules/palm_detection/palm_detection_lite.tflite` (스크립트가 자동 복사).
 - **DX-COM**: SNU 서버 (user12, port 443) 에서 컴파일. aarch64 보드에서는 직접 컴파일 불가.

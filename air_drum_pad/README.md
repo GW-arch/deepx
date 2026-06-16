@@ -105,22 +105,26 @@ Tiny variation every 4th bar:
 | `cpu` | CPU (MediaPipe 내장) | CPU (MediaPipe 내장) | 추가 파일 불필요, 데모 영상용 손끝 정확도 우선 |
 | `cpu-baseline` | CPU (TFLite, float32) | CPU (TFLite, float32) | NPU 없이 npu-full과 동일 파이프라인 (비교 기준선) |
 | `npu` | 없음 (dual-halves 근사) | **NPU** (.dxnn, int8) | palm 검출 없이 화면 좌우 반분할 |
-| `npu-full` (기본) | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 정식 2-hand 파이프라인, guided-style UI 기본 |
+| `npu-full` (기본) | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 안정적인 2-hand 파이프라인, guided-style UI 기본 |
+| `npu-full --palm-dxnn ...local.dxnn` | **NPU** (.dxnn, int8) | **NPU** (.dxnn, int8) | DX-COM 2.3.0 재컴파일 palm 후보; offline replay 통과, live 재검증 필요 |
 | `pinto-cpu` | CPU (TFLite, float32) | CPU (PINTO ONNX, float32) | PINTO sparse hand model 비교 기준 |
 | `pinto-npu` | CPU (TFLite, float32) | **NPU** (PINTO .dxnn, int8) | PINTO sparse hand model NPU adoption 실험 |
+| `pinto-npu --palm-dxnn ...local.dxnn` | **NPU** (.dxnn, int8) | **NPU** (PINTO .dxnn, int8) | 가장 빠른 full-NPU PINTO 후보; right-hand agreement 열세 |
 
-> **왜 palm은 CPU인가?** Palm detection .dxnn을 INT8 양자화하면 score head가 파괴됩니다 (ONNX↔NPU 상관 -0.11). DeepX NPU는 INT8 전용 가속기이므로 float32 실행이 불가능합니다. 따라서 palm은 TFLite(CPU, float32)로, hand landmark만 NPU(int8)로 실행하는 하이브리드가 최선입니다. 자세한 분석: [`models/README.md`](models/README.md).
+> **Palm NPU 상태:** DX-COM 2.3.0으로 컴파일한 `palm_detection_lite_minmax_local.dxnn` / `palm_detection_lite_ema_local.dxnn`은 보드 offline replay에서 accepted palm을 생성하고 hand landmark stage까지 연결됩니다. 기본 live path는 안정성 검증 전까지 CPU palm을 유지하고, full-NPU palm은 `--palm-dxnn`으로 명시 실험합니다. 상세 기록: [`docs/SESSION_2026_06_16_PALM_DXNN_LOCAL_RECOMPILE.md`](docs/SESSION_2026_06_16_PALM_DXNN_LOCAL_RECOMPILE.md).
 
 #### 성능 비교
 
 | 구성 | Palm 단계 | Hand 단계 | 전체 | 비고 |
 |------|----------:|----------:|-----:|------|
-| `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | prior live-oriented 측정 |
-| `cpu-baseline` (TFLite palm + TFLite hand) | 41.70 ms | 45.55 ms | 87.73 ms | 10-frame replay smoke, 비교 기준선 |
-| `pinto-cpu` (TFLite palm + PINTO ONNX hand) | 38.62 ms | 49.85 ms | 88.85 ms | 10-frame replay smoke |
-| `npu-full` (TFLite palm + NPU hand) | 40.91 ms | 8.57 ms | 49.76 ms | 10-frame replay smoke, 기본 경로 |
-| `pinto-npu` (TFLite palm + PINTO NPU hand) | 41.21 ms | 9.00 ms | 50.48 ms | 10-frame replay smoke, 실험용 |
-| `npu` (dual-halves) | 0 ms | ~8 ms × 2 | ~16 ms | prior live-oriented 측정, palm 검출 없음 |
+| `cpu` (MediaPipe) | MediaPipe internal | MediaPipe internal | 64.95 ms | 90-frame replay, high variance |
+| `cpu-baseline` (TFLite palm + TFLite hand) | 40.29 ms | 45.72 ms | 86.42 ms | 90-frame replay, 비교 기준선 |
+| `pinto-cpu` (TFLite palm + PINTO ONNX hand) | 38.59 ms | 50.59 ms | 89.58 ms | 90-frame replay |
+| `npu-full` (TFLite palm + NPU hand) | 39.84 ms | 8.48 ms | 48.61 ms | 90-frame replay, live 기본 경로 |
+| `pinto-npu` (TFLite palm + PINTO NPU hand) | 40.23 ms | 8.62 ms | 49.14 ms | 90-frame replay, 실험용 |
+| `npu-full --palm-dxnn palm_detection_lite_minmax_local.dxnn` | 10.00 ms | 13.85 ms | 24.32 ms | 90-frame replay, full-NPU 후보 |
+| `pinto-npu --palm-dxnn palm_detection_lite_minmax_local.dxnn` | 9.92 ms | 12.91 ms | 23.29 ms | 90-frame replay, 더 빠르지만 right-hand agreement 열세 |
+| `npu` (dual-halves) | 0 ms | NPU-only hand pass | 8.42 ms | 90-frame replay, palm 검출 없음 |
 
 > **npu-full은 매 프레임 palm detection을 실행합니다.** 이전에는 landmark 기반 ROI 트래킹으로 palm을 5프레임에 1번만 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01).
 
@@ -159,7 +163,7 @@ python3 main.py --backend npu-full \
   --max-hands 2
 ```
 
-`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. `--palm-dxnn` 플래그도 존재하나 양자화 품질 문제로 **명시적으로 지정한 실험에서만 사용**하세요.
+`--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. local 재컴파일 palm 후보를 검증할 때는 `--palm-dxnn models/vendor/palm_detection_lite_minmax_local.dxnn`을 명시합니다.
 
 #### 데이터셋 기반 오프라인 벤치마크
 
@@ -170,7 +174,12 @@ python3 main.py --backend npu-full \
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
 
 # PINTO adoption 비교
-python3 tools/benchmark_dataset.py --backends cpu-baseline,pinto-cpu,pinto-npu,npu-full --limit 10 --warmup 0
+python3 tools/benchmark_dataset.py --backends cpu-baseline,pinto-cpu,pinto-npu,npu-full --limit 90 --warmup 0
+
+# local DX-COM 2.3.0 palm 재컴파일 후보 검증
+python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
+  --palm-dxnn models/vendor/palm_detection_lite_minmax_local.dxnn \
+  --limit 90 --warmup 0
 
 # palm skip/ROI tracking 실험: palm 1회 후 최대 5프레임은 landmark ROI로 추적
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5

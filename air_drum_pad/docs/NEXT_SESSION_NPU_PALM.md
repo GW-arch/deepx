@@ -1,10 +1,26 @@
 # 다음 세션 실험 가이드 — Palm + Hand NPU 파이프라인
 
+## 2026-06-16 업데이트
+
+- 재컴파일한 `palm_detection_lite_minmax_local.dxnn` / `palm_detection_lite_ema_local.dxnn` 후보는 board offline replay에서 accepted palm을 만들고 hand landmark stage까지 연결됩니다.
+- 최신 기준 후보는 `palm_detection_lite_minmax_local.dxnn`입니다. 상세 checksum, compile log, tensor validation, backend comparison은 [`SESSION_2026_06_16_PALM_DXNN_LOCAL_RECOMPILE.md`](SESSION_2026_06_16_PALM_DXNN_LOCAL_RECOMPILE.md)에 있습니다.
+- 다음 작업은 과거 compile failure 재현이 아니라 live camera에서 `npu-full --palm-dxnn models/vendor/palm_detection_lite_minmax_local.dxnn`의 안정성과 guided drum/piano hit accuracy를 재측정하는 것입니다.
+
+빠른 live 재검증:
+
+```bash
+cd ~/deepx/air_drum_pad
+python3 main.py --backend npu-full \
+  --palm-dxnn models/vendor/palm_detection_lite_minmax_local.dxnn \
+  --dxnn models/vendor/hand_landmark_lite.dxnn \
+  --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json
+```
+
 ## 2026-05-08 추가 구현 결과
 
 - `tools/benchmark_dataset.py` 추가: `dataset/frame_*.png`를 재생해 `cpu-baseline`/`npu-full` 지연, palm/hand 세부 시간, landmark 오차를 반복 측정.
 - `FullNpuHandsTracker.last_profile` 및 `--palm-redetect-every N` 추가: 기본은 `0`(매 프레임 palm), `N>0`은 palm skip/ROI tracking 실험.
-- `npu-full`의 palm 자동 탐색을 **TFLite 우선**으로 변경. Palm .dxnn은 score head 양자화 실패가 알려져 있으므로 `--palm-dxnn` 명시 시에만 실험적으로 사용.
+- `npu-full`의 palm 자동 탐색은 안정적인 live 기본값인 **TFLite 우선**입니다. 재컴파일한 Palm `.dxnn` 후보는 `--palm-dxnn` 명시 시 full-NPU 실험 경로로 사용합니다.
 - `--async-palm` 실험 옵션 추가: background palm + foreground ROI tracking.
 - `tools/sweep_palm_redetect.py` 추가: `--palm-redetect-every` sweep CSV/JSON 생성.
 - `tools/benchmark_dataset.py --debug-dir` 추가: landmark 오차 큰 프레임 overlay 자동 저장.
@@ -29,11 +45,8 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --landmark-c
 - **커밋:** 82aab86 (`main`) — `FullNpuHandsTracker` 가 `palm_dxnn_path` / `palm_tflite_path` 둘 다 지원
   - `--palm-dxnn` CLI 플래그 추가 (`main.py`)
   - 당시 `create_tracker()` 자동 탐색은 `.dxnn` → `.tflite` 우선순위였으나, 2026-05-08 이후 기본은 TFLite 우선으로 변경
-  - Palm .dxnn 레이턴시: repeated dataset runs 약 **8-11 ms** (vs TFLite CPU 약 39-42 ms) — 속도는 빠르지만 accepted palm 0
-  - **그러나 Palm .dxnn INT8 양자화로 score head 파괴** — TFLite↔ONNX score/box 상관은 거의 1.0이나, DXNN score 상관은 `frame_000` 기준 -0.1457, `frame_060` 기준 -0.1900. TFLite best score `+1.8786`가 DXNN 같은 anchor에서 `-29.3477`로 밀림.
-  - 시도한 조합: ema/minmax calibration, `--aggressive_partitioning` (0 CPU groups), `--opt_level 0`/`1` — 모두 실패
-  - **결론: Palm detection은 TFLite (CPU, float32) 로 고정**, Hand landmark만 NPU
-  - `_run_palm()` .dxnn 경로: NHWC uint8 입력 → `dx_engine.InferenceEngine.run()`. `dx_engine` metadata도 `[1,192,192,3] uint8` 입력을 보고하므로 현재 accepted palm 0 문제는 단순 runtime layout mismatch가 아님.
+  - 이 시점의 초기 Palm `.dxnn` 실험 결과는 2026-06-16 재컴파일 결과로 대체됨. 최신 후보는 `palm_detection_lite_minmax_local.dxnn`이며 offline replay에서 accepted palm과 hand stage 연결을 확인.
+  - `_run_palm()` .dxnn 경로: NHWC uint8 입력 → `dx_engine.InferenceEngine.run()`.
   - `close()` 에서 `palm_ie.dispose()` 호출
   - 디스플레이 `cv2.flip(frame, 1)` 추가 (셀카 미러)
   - `os.chdir(_SCRIPT_DIR)` 추가 (상대 경로 안정화)

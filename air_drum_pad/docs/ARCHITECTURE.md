@@ -44,19 +44,20 @@
 | 로직 | C++ 권장 |
 | 오디오 | ALSA 저버퍼 또는 JACK |
 
-**프로토타입:** `main.py`(CPU/CPU-baseline/NPU 백엔드), `hand_tracker.py`(MediaPipe / Palm+Hand TFLite CPU / Palm TFLite CPU + Hand .dxnn NPU 하이브리드), `strike_detector.py`, `drumkit_audio.py`(pygame)
+**프로토타입:** `main.py`(CPU/CPU-baseline/NPU 백엔드), `hand_tracker.py`(MediaPipe / Palm+Hand TFLite CPU / Palm TFLite CPU + Hand .dxnn NPU 하이브리드 / Palm .dxnn + Hand .dxnn full-NPU 후보), `strike_detector.py`, `drumkit_audio.py`(pygame)
 
 ---
 
 ## 5. NPU 모델
 
 - **주 모델:** MediaPipe 계열 **Hand Landmark**(21 keypoints), ONNX → INT8 → .dxnn — **NPU 실행**
-- **Palm Detection:** TFLite **CPU 실행** (float32) — INT8 양자화 시 score head 파괴로 NPU 불가
+- **Palm Detection:** 기본 live path는 TFLite **CPU 실행**(float32), offline replay 통과 후보는 `.dxnn` **NPU 실행**
 - Palm → ROI crop → Hand landmark → 21 keypoints 순서의 2단 파이프라인
 
 | 모델 | 입력 | 실행 위치 | 양자화 | 비고 |
 |------|------|-----------|--------|------|
-| Palm Detection | 192×192 NHWC float32 | CPU (TFLite) | 없음 (float32) | INT8 score head 파괴 |
+| Palm Detection | 192×192 NHWC float32 | CPU (TFLite) | 없음 (float32) | conservative live default |
+| Palm Detection | 192×192 NHWC uint8 | **NPU** (.dxnn) | INT8 PTQ | `--palm-dxnn` full-NPU 후보, live 재검증 필요 |
 | Hand Landmark | 224×224 NHWC uint8 | **NPU** (.dxnn) | INT8 PTQ | 정상 동작 |
 | Hand Landmark | 224×224 NHWC float32 | CPU (TFLite) | 없음 (float32) | `cpu-baseline` 백엔드용 |
 
@@ -68,10 +69,12 @@
 
 | `--backend` | Palm Detection | Hand Landmark | 전체 (2 hands) | 비고 |
 |-------------|----------------|---------------|---------------:|------|
-| `cpu` | MediaPipe 내장 | MediaPipe 내장 | ~35 ms | float32 |
-| `cpu-baseline` | CPU TFLite float32 | CPU TFLite float32 | ~105 ms | NPU 없이 동일 파이프라인 (비교 기준선) |
-| `npu-full` | CPU TFLite float32 | **NPU** .dxnn int8 | ~111 ms | 정식 파이프라인 |
-| `npu` | 없음 (dual-halves) | **NPU** .dxnn int8 | ~16 ms | palm 없음, 근사 |
+| `cpu` | MediaPipe 내장 | MediaPipe 내장 | 64.95 ms | 90-frame replay, high variance |
+| `cpu-baseline` | CPU TFLite float32 | CPU TFLite float32 | 86.42 ms | NPU 없이 동일 파이프라인 (비교 기준선) |
+| `npu-full` | CPU TFLite float32 | **NPU** .dxnn int8 | 48.61 ms | conservative live default |
+| `npu-full --palm-dxnn` | **NPU** .dxnn int8 | **NPU** .dxnn int8 | 24.32 ms | offline replay 기준 best accuracy-speed NPU 후보 |
+| `pinto-npu --palm-dxnn` | **NPU** .dxnn int8 | **NPU** PINTO .dxnn int8 | 23.29 ms | 더 빠르지만 right-hand agreement 약함 |
+| `npu` | 없음 (dual-halves) | **NPU** .dxnn int8 | 8.42 ms | palm 없음, 근사 |
 
 ---
 

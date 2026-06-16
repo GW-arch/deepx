@@ -254,14 +254,15 @@ def latency_chart() -> None:
         "CPU-baseline\nTFLite",
         "PINTO CPU\nPalm CPU + ONNX",
         "NPU-full\nPalm CPU + Hand NPU",
-        "PINTO NPU\nPalm CPU + DXNN",
-        "Palm NPU\ninvalid tracker",
+        "PINTO NPU\nPalm CPU + Hand NPU",
+        "NPU-full\nPalm NPU + Hand NPU",
+        "PINTO NPU\nPalm NPU + Hand NPU",
         "NPU dual-halves\nHand NPU",
     ]
-    values = [35.0, 84.4, 88.85, 50.32, 50.48, 10.88, 7.16]
-    colors = ["#60a5fa", "#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#94a3b8", "#34d399"]
+    values = [64.95, 86.42, 89.58, 48.61, 49.14, 24.32, 23.29, 8.42]
+    colors = ["#60a5fa", "#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#22c55e", "#14b8a6", "#34d399"]
 
-    fig, ax = plt.subplots(figsize=(13.0, 5.4))
+    fig, ax = plt.subplots(figsize=(14.8, 5.8))
     bars = ax.bar(labels, values, color=colors, edgecolor="#1f2937", linewidth=1.0)
     ax.set_ylabel("Approx. end-to-end vision latency (ms)")
     ax.set_title("Backend Latency Comparison from Prototype Measurements", fontsize=15, fontweight="bold")
@@ -281,14 +282,14 @@ def latency_chart() -> None:
         )
     ax.text(
         0.5,
-        -0.25,
-        "PINTO CPU/NPU rows are included; the Palm NPU row is fast but invalid because no palms are accepted. The dual-halves row is fast but geometrically approximate.",
+        -0.32,
+        "All bars use 90-frame replay measurements. Full-NPU palm rows use the compiled palm DXNN candidate; dual-halves is fastest but geometrically approximate.",
         transform=ax.transAxes,
         ha="center",
         fontsize=9,
         color="#475569",
     )
-    fig.subplots_adjust(bottom=0.26)
+    fig.subplots_adjust(bottom=0.34)
     fig.savefig(OUT / "backend_latency.png", dpi=180, bbox_inches="tight", facecolor="white")
     plt.close(fig)
 
@@ -298,58 +299,49 @@ def backend_tradeoff_chart() -> None:
         "CPU-baseline\nTFLite",
         "PINTO CPU\nPalm CPU + ONNX",
         "NPU-full\nPalm CPU + Hand NPU",
-        "PINTO NPU\nPalm CPU + DXNN",
+        "PINTO NPU\nPalm CPU + Hand NPU",
+        "NPU-full\nPalm NPU + Hand NPU",
+        "PINTO NPU\nPalm NPU + Hand NPU",
         "NPU dual-halves\nHand NPU",
-        "Palm NPU\ninvalid tracker",
     ]
-    latency_ms = [87.73, 88.85, 49.76, 50.48, 7.16, 10.88]
+    latency_ms = [86.42, 89.58, 48.61, 49.14, 24.32, 23.29, 8.42]
     mean_xy_error = [
         0.0,
-        (0.0176 + 0.0103) / 2.0,
-        (0.0068 + 0.0129) / 2.0,
-        (0.0205 + 0.0115) / 2.0,
-        (0.1593 + 0.1319) / 2.0,
-        0.0,
+        0.0290,
+        0.0186,
+        0.0290,
+        0.0195,
+        0.0305,
+        0.1610,
     ]
     npu_active_share = [
         0.0,
         0.0,
-        8.57 / 49.76 * 100.0,
-        9.00 / 50.48 * 100.0,
+        8.48 / 48.61 * 100.0,
+        8.62 / 49.14 * 100.0,
+        (10.00 + 13.85) / 24.32 * 100.0,
+        (9.92 + 12.91) / 23.29 * 100.0,
         100.0,
-        10.82 / 10.88 * 100.0,
     ]
-    colors = ["#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#34d399", "#94a3b8"]
+    colors = ["#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#22c55e", "#14b8a6", "#34d399"]
 
-    fig, axes = plt.subplots(1, 3, figsize=(15.5, 5.2))
+    fig, axes = plt.subplots(1, 3, figsize=(17.0, 5.6))
     fig.suptitle("Backend Trade-off: Speed, Accuracy, and NPU-Active Share", fontsize=16, fontweight="bold", y=0.98)
 
     panels = [
-        (axes[0], latency_ms, "Mean vision latency (ms)", "Lower is better", "{:.1f}", set()),
-        (axes[1], mean_xy_error, "Mean normalized XY error", "Lower is better", "{:.4f}", {5}),
-        (axes[2], npu_active_share, "NPU-active share proxy (%)", "Higher means more NPU-bound", "{:.0f}%", set()),
+        (axes[0], latency_ms, "Mean vision latency (ms)", "Lower is better", "{:.1f}"),
+        (axes[1], mean_xy_error, "Mean normalized XY error", "Lower is better", "{:.4f}"),
+        (axes[2], npu_active_share, "NPU-active share proxy (%)", "Higher means more NPU-bound", "{:.0f}%"),
     ]
 
-    for ax, values, ylabel, subtitle, fmt, invalid_indices in panels:
+    for ax, values, ylabel, subtitle, fmt in panels:
         bars = ax.bar(labels, values, color=colors, edgecolor="#1f2937", linewidth=0.9)
         ax.set_ylabel(ylabel)
         ax.set_title(subtitle, fontsize=11)
         ax.grid(axis="y", color="#e5e7eb")
         ax.set_axisbelow(True)
-        ax.tick_params(axis="x", labelrotation=35, labelsize=8)
-        for index, (bar, value) in enumerate(zip(bars, values)):
-            if index in invalid_indices:
-                bar.set_alpha(0.25)
-                ax.text(
-                    bar.get_x() + bar.get_width() / 2,
-                    ax.get_ylim()[1] * 0.055,
-                    "invalid",
-                    ha="center",
-                    va="bottom",
-                    fontsize=8,
-                    color="#475569",
-                )
-                continue
+        ax.tick_params(axis="x", labelrotation=38, labelsize=7.5)
+        for bar, value in zip(bars, values):
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
                 value + ax.get_ylim()[1] * 0.025,

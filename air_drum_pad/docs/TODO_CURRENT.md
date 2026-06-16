@@ -10,7 +10,7 @@ The previous interface/performance items are implemented and summarized in
 
 - Runtime/code TODOs from the prior list are complete.
 - Current open work is mainly evaluation, final-report placeholders, and future enhancements.
-- After any report placeholder is filled, regenerate both English/Korean DOCX and PDF exports with:
+- Keep the Markdown report as the tracked source of truth. If PDF/DOCX exports are needed for submission, generate them as temporary deliverables instead of keeping them in git:
 
 ```bash
 cd air_drum_pad
@@ -41,11 +41,7 @@ python3 tools/export_report_documents.py
   - `FILLME_latency_measurement_setup.png`
 - [ ] Add the final hit-accuracy result figure/table and replace:
   - `FILLME_hit_accuracy_results.png`
-- [ ] Regenerate report exports after the above changes:
-  - `docs/FINAL_REPORT_AI_AIR_DRUM_PAD.docx`
-  - `docs/FINAL_REPORT_AI_AIR_DRUM_PAD.pdf`
-  - `docs/FINAL_REPORT_AI_AIR_DRUM_PAD_KO.docx`
-  - `docs/FINAL_REPORT_AI_AIR_DRUM_PAD_KO.pdf`
+- [x] Remove generated PDF/DOCX report exports from git; keep Markdown as the tracked report artifact.
 
 ## P1 — Evaluation tasks
 
@@ -66,8 +62,10 @@ python3 tools/export_report_documents.py
 
 ## P3 — NPU / model pipeline improvements
 
-- [ ] Investigate palm detector alternatives that quantize well for NPU deployment.
-- [ ] Revisit palm `.dxnn` conversion only if score-head quality can be preserved.
+- [x] Recompile palm `.dxnn` with DX-COM 2.3.0 and verify accepted palms on board replay.
+- [x] Re-run 90-frame backend comparison after replacing the palm `.dxnn` candidate.
+- [ ] Re-test live-camera stability and hit accuracy with `palm_detection_lite_minmax_local.dxnn`.
+- [ ] Investigate palm detector alternatives only if the recompiled MediaPipe palm model fails live stability.
 - [ ] Profile NPU dispatch overhead for the hand landmark model (`~8 ms` NPU vs `~5 ms` CPU TFLite was previously observed).
 - [ ] Document exact DX-RT/DX-COM versions, model checksums, and vendor asset acquisition steps for reproducibility.
 
