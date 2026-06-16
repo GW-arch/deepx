@@ -260,7 +260,7 @@ The backend evaluation was designed to separate three questions that are often c
 2. How much of the latency comes from palm detection versus hand landmark inference?
 3. Does the NPU accelerate the part of the pipeline that is actually deployed on the NPU, and what accuracy risks are introduced by faster approximations?
 
-For that reason, four runtime configurations were evaluated rather than a single prototype.
+For that reason, several runtime configurations were evaluated rather than a single prototype.
 
 | Configuration | What it evaluates | Why this baseline is required |
 |---------------|-------------------|-------------------------------|
@@ -321,7 +321,7 @@ The latest validation run produced:
 | Test group | Result |
 |------------|--------|
 | Python syntax check | Passed |
-| Unit tests | 48/48 passed |
+| Unit tests | 49/49 passed |
 | Palm decode tests | 15/15 passed |
 | Dataset benchmark smoke | Skipped intentionally in the portable validation run |
 
@@ -357,7 +357,7 @@ The drum-pad interface performed better than the piano interface because drum mo
 
 ### 7.4 Backend Performance Summary
 
-The table below reports the high-level latency comparison for the evaluated runtime configurations. The `cpu` row is a practical reference path. The `cpu-baseline` and default `npu-full` rows form the controlled CPU-vs-NPU comparison because they share the same palm→ROI→hand pipeline and differ primarily in hand landmark inference. The `npu-full --palm-dxnn` row is not a valid hand-tracking result; it is included because it directly measures the desired palm-on-NPU direction and shows why it is not yet usable.
+The table below reports the high-level latency comparison for the evaluated runtime configurations. The `cpu` row is a practical reference path. The `cpu-baseline` and default `npu-full` rows form the controlled CPU-vs-NPU comparison because they share the same palm→ROI→hand pipeline and differ primarily in hand landmark inference. The PINTO rows are 10-frame adoption smokes for the newly added PINTO ONNX/DXNN paths. The `npu-full --palm-dxnn` row is not a valid hand-tracking result; it is included because it directly measures the desired palm-on-NPU direction and shows why it is not yet usable.
 
 | Backend | Recorded latency / profile | Interpretation |
 |---------|----------------------------|----------------|
@@ -365,15 +365,32 @@ The table below reports the high-level latency comparison for the evaluated runt
 | `cpu-baseline` (TFLite) | mean 84.40 ms; palm 39.26 ms + hand 44.80 ms | Same two-stage structure as `npu-full`; isolates the hand-landmark accelerator comparison |
 | `npu-full` default | mean 50.10-50.32 ms; palm about 40.7 ms + hand about 9.1 ms | Valid accurate hybrid path; NPU accelerates hand landmarks, but CPU palm detection dominates total time |
 | `npu-full --palm-dxnn models/vendor/palm_detection_lite.dxnn` | repeated means 10.39 ms and 10.88 ms; profile `hand=0.00 ms` | Palm `.dxnn` executes and is fast, but current output/postprocess path accepts no palms, so this is not a working full-NPU tracker |
-| `npu` dual-halves | about 16 ms in prior live-oriented measurement | Fastest path and close to the 60 FPS budget, but it approximates hand location without palm detection |
+| `npu` dual-halves | 10-frame replay mean 7.16 ms; about 16 ms in prior live-oriented measurement | Fastest path and close to the 60 FPS budget, but it approximates hand location without palm detection |
 | `pinto-cpu` | 10-frame smoke mean 88.91 ms; palm 40.19 ms + hand 48.27 ms | PINTO ONNX adoption works on CPU, but it is slower than the current NPU hand-landmark path |
 | `pinto-npu` | 10-frame smoke mean 50.48 ms; palm 41.21 ms + hand 9.00 ms | PINTO DXNN loads and runs on NPU; latency is comparable to `npu-full`, but accuracy is not yet a default-path win |
 
 The result has three important implications. First, moving only the hand landmark model to NPU helps substantially, reducing the TFLite-style hand stage from 44.80 ms to about 9.13 ms. Second, this is still insufficient when CPU palm detection remains about 40 ms. Third, the palm `.dxnn` path consumes NPU and is fast, but it cannot be used for the final instrument until its detections are accepted and the hand-landmark stage runs.
 
+The following table compares the same backend family across three practical axes: speed, landmark agreement, and NPU use. To keep `cpu-baseline`, `pinto-cpu`, `npu-full`, `pinto-npu`, `npu` dual-halves, and palm-NPU rows in one comparable window, this table uses the 10-frame replay smoke measurements; the longer 90-frame `cpu-baseline` vs. `npu-full` result remains the main matched benchmark in Section 7.5. The NPU column is a profiled **NPU-active share proxy**, computed as the fraction of measured vision-loop time spent in NPU-backed stages. It is not a raw instantaneous `dxtop` percentage; it is included because `dxtop` showed bursty use while the profiler gives a reproducible per-frame estimate.
+
+| Backend | Mean latency | FPS equivalent | NPU-active share proxy | Mean landmark error vs. `cpu-baseline` | Practical conclusion |
+|---------|-------------:|---------------:|-----------------------:|---------------------------------------:|----------------------|
+| `cpu-baseline` | 87.73 ms | 11.4 FPS | 0.0% | 0.0000 reference | Accuracy reference, but too slow and no NPU use |
+| `pinto-cpu` | 88.85 ms | 11.3 FPS | 0.0% | 0.0140 | PINTO ONNX works, but has no speed advantage |
+| `npu-full` | 49.76 ms | 20.1 FPS | 17.2% | 0.0099 | Best current NPU-backed accuracy and default backend |
+| `pinto-npu` | 50.48 ms | 19.8 FPS | 17.8% | 0.0160 | Runs at NPU speed, but does not beat `npu-full` accuracy |
+| `npu` dual-halves | 7.16 ms | 139.7 FPS | about 100% | 0.1456 | Fastest and most NPU-bound, but too inaccurate for the final tracker |
+| `npu-full --palm-dxnn` | 10.88 ms | 91.9 FPS | 99.4% | not valid | Palm NPU executes, but no accepted palms reach hand landmark inference |
+
+![Figure 13. Backend trade-off comparison across latency, landmark agreement, and NPU-active share.](figures/backend_tradeoff.png)
+
+<p align="center"><em>Figure 13. Backend trade-off comparison across latency, landmark agreement, and NPU-active share.</em></p>
+
+From this three-axis view, the current answer is clear: `pinto-npu` proves that the PINTO model can run on the NPU, but it does not beat `npu-full` overall. Their latency and NPU-active share are almost the same because both still spend about 40 ms in CPU palm detection. The differentiator is landmark agreement, where `npu-full` is better in the current 10-frame replay comparison. The only backend that is much faster, `npu` dual-halves, loses too much accuracy because it removes palm localization.
+
 ### 7.5 Offline Dataset Benchmark Summary
 
-A 90-frame offline benchmark was run to compare the two structurally matched pipelines, `cpu-baseline` and `npu-full`, using the same captured input frames. This benchmark removes live camera variability and focuses on per-frame processing latency and landmark agreement.
+A 90-frame offline benchmark was run to compare the two structurally matched pipelines, `cpu-baseline` and `npu-full`, using the same captured input frames. This benchmark removes live camera variability and focuses on per-frame processing latency and landmark agreement. PINTO CPU/NPU rows are reported separately as 10-frame smoke measurements because the compiled PINTO `.dxnn` was added after the main 90-frame run.
 
 | Configuration | Mean latency | P95 latency | Component profile | Interpretation |
 |---------------|-------------:|------------:|-------------------|----------------|
@@ -400,7 +417,20 @@ Two correction approaches were tested. The dataset correction worsened the right
 
 The current conclusion is that the hand-landmark `.dxnn` is callable and correctly wired at the IO level, but its INT8 output distribution differs enough from the CPU float/TFLite reference to affect visible landmark accuracy. This is a model-conversion and quantization quality issue rather than a total runtime failure.
 
-The PINTO sparse hand-landmark model was also evaluated as an adoption candidate [6], [7]. The CPU ONNX path works, and an off-board DX-COM compile produced `models/vendor/pinto_hand_landmark_sparse.dxnn` with SHA-256 `8f35a014f9908f210a71edbba3808bb4940a2ca60ee3b45166bafac5aabdeccb`. Board-side DXRT reported input `input [1,224,224,3] uint8` and outputs `xyz_x21`, `hand_score`, and `lefthand_0_or_righthand_1`; the original ONNX `Round` operation had to be replaced with `Identity`, so the handedness output is a sigmoid probability thresholded at `0.5`. In the 10-frame replay comparison against `cpu-baseline`, `pinto-npu` produced right-hand mean error `0.0205` and left-hand mean error `0.0115`, while `npu-full` produced right-hand mean error `0.0068` and left-hand mean error `0.0129`. The model is therefore useful as an experimental candidate and runs at NPU speed, but it is not yet a replacement for the default hand-landmark `.dxnn`.
+The PINTO sparse hand-landmark model was also evaluated as an adoption candidate [6], [7]. The CPU ONNX path works, and an off-board DX-COM compile produced `models/vendor/pinto_hand_landmark_sparse.dxnn` with SHA-256 `8f35a014f9908f210a71edbba3808bb4940a2ca60ee3b45166bafac5aabdeccb`. Board-side DXRT reported input `input [1,224,224,3] uint8` and outputs `xyz_x21`, `hand_score`, and `lefthand_0_or_righthand_1`; the original ONNX `Round` operation had to be replaced with `Identity`, so the handedness output is a sigmoid probability thresholded at `0.5`.
+
+In a 10-frame replay comparison against `cpu-baseline`, the PINTO paths produced the following landmark agreement:
+
+| Backend | Hand | Mean error over 21 points | Mean fingertip error | Mean max error | Worst max error |
+|---------|------|--------------------------:|---------------------:|---------------:|----------------:|
+| `pinto-cpu` | Right | 0.0176 | 0.0145 | 0.0321 | 0.0330 |
+| `pinto-cpu` | Left | 0.0103 | 0.0064 | 0.0198 | 0.0208 |
+| `pinto-npu` | Right | 0.0205 | 0.0313 | 0.0429 | 0.0441 |
+| `pinto-npu` | Left | 0.0115 | 0.0140 | 0.0278 | 0.0285 |
+| `npu-full` | Right | 0.0068 | 0.0100 | 0.0133 | 0.0154 |
+| `npu-full` | Left | 0.0129 | 0.0178 | 0.0264 | 0.0308 |
+
+The model is therefore useful as an experimental candidate and runs at NPU speed, but it is not yet a replacement for the default hand-landmark `.dxnn`.
 
 ---
 

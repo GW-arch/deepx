@@ -258,7 +258,7 @@ def latency_chart() -> None:
         "Palm NPU\ninvalid tracker",
         "NPU dual-halves\nHand NPU",
     ]
-    values = [35.0, 84.4, 88.91, 50.32, 50.48, 10.88, 16.0]
+    values = [35.0, 84.4, 88.85, 50.32, 50.48, 10.88, 7.16]
     colors = ["#60a5fa", "#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#94a3b8", "#34d399"]
 
     fig, ax = plt.subplots(figsize=(13.0, 5.4))
@@ -282,7 +282,7 @@ def latency_chart() -> None:
     ax.text(
         0.5,
         -0.25,
-        "PINTO CPU/NPU rows are included; the Palm NPU row is fast but invalid because no palms are accepted. Final audio latency still requires manual high-speed-camera capture.",
+        "PINTO CPU/NPU rows are included; the Palm NPU row is fast but invalid because no palms are accepted. The dual-halves row is fast but geometrically approximate.",
         transform=ax.transAxes,
         ha="center",
         fontsize=9,
@@ -293,11 +293,95 @@ def latency_chart() -> None:
     plt.close(fig)
 
 
+def backend_tradeoff_chart() -> None:
+    labels = [
+        "CPU-baseline\nTFLite",
+        "PINTO CPU\nPalm CPU + ONNX",
+        "NPU-full\nPalm CPU + Hand NPU",
+        "PINTO NPU\nPalm CPU + DXNN",
+        "NPU dual-halves\nHand NPU",
+        "Palm NPU\ninvalid tracker",
+    ]
+    latency_ms = [87.73, 88.85, 49.76, 50.48, 7.16, 10.88]
+    mean_xy_error = [
+        0.0,
+        (0.0176 + 0.0103) / 2.0,
+        (0.0068 + 0.0129) / 2.0,
+        (0.0205 + 0.0115) / 2.0,
+        (0.1593 + 0.1319) / 2.0,
+        0.0,
+    ]
+    npu_active_share = [
+        0.0,
+        0.0,
+        8.57 / 49.76 * 100.0,
+        9.00 / 50.48 * 100.0,
+        100.0,
+        10.82 / 10.88 * 100.0,
+    ]
+    colors = ["#f59e0b", "#fb923c", "#a78bfa", "#8b5cf6", "#34d399", "#94a3b8"]
+
+    fig, axes = plt.subplots(1, 3, figsize=(15.5, 5.2))
+    fig.suptitle("Backend Trade-off: Speed, Accuracy, and NPU-Active Share", fontsize=16, fontweight="bold", y=0.98)
+
+    panels = [
+        (axes[0], latency_ms, "Mean vision latency (ms)", "Lower is better", "{:.1f}", set()),
+        (axes[1], mean_xy_error, "Mean normalized XY error", "Lower is better", "{:.4f}", {5}),
+        (axes[2], npu_active_share, "NPU-active share proxy (%)", "Higher means more NPU-bound", "{:.0f}%", set()),
+    ]
+
+    for ax, values, ylabel, subtitle, fmt, invalid_indices in panels:
+        bars = ax.bar(labels, values, color=colors, edgecolor="#1f2937", linewidth=0.9)
+        ax.set_ylabel(ylabel)
+        ax.set_title(subtitle, fontsize=11)
+        ax.grid(axis="y", color="#e5e7eb")
+        ax.set_axisbelow(True)
+        ax.tick_params(axis="x", labelrotation=35, labelsize=8)
+        for index, (bar, value) in enumerate(zip(bars, values)):
+            if index in invalid_indices:
+                bar.set_alpha(0.25)
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    ax.get_ylim()[1] * 0.055,
+                    "invalid",
+                    ha="center",
+                    va="bottom",
+                    fontsize=8,
+                    color="#475569",
+                )
+                continue
+            ax.text(
+                bar.get_x() + bar.get_width() / 2,
+                value + ax.get_ylim()[1] * 0.025,
+                fmt.format(value),
+                ha="center",
+                va="bottom",
+                fontsize=8,
+            )
+
+    axes[0].axhline(16.7, color="#ef4444", linestyle="--", linewidth=1.1)
+    axes[0].text(0.0, 17.9, "60 FPS budget", fontsize=8, color="#ef4444")
+    axes[1].set_ylim(0, 0.17)
+    axes[2].set_ylim(0, 112)
+    fig.text(
+        0.5,
+        0.01,
+        "Accuracy uses 10-frame replay agreement against cpu-baseline. NPU-active share is derived from profiled NPU-backed stage time, not a raw dxtop instantaneous percent.",
+        ha="center",
+        fontsize=9,
+        color="#475569",
+    )
+    fig.subplots_adjust(bottom=0.31, top=0.84, wspace=0.28)
+    fig.savefig(OUT / "backend_tradeoff.png", dpi=180, bbox_inches="tight", facecolor="white")
+    plt.close(fig)
+
+
 def main() -> None:
     panda_icon()
     system_pipeline()
     strike_logic()
     latency_chart()
+    backend_tradeoff_chart()
     print(f"Saved report figures to {OUT}")
 
 

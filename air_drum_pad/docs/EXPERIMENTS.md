@@ -72,10 +72,10 @@
 |------|-----|
 | Board | Orange Pi 5 Plus (RK3588, aarch64) |
 | OS | Linux, Python 3.10.12 |
-| DX-RT / dx_engine | 1.1.4 |
-| DX-COM | v2.1.0-rc.4 (SNU 서버) |
+| DX-RT / dx_engine | DXRT v3.2.0 observed through `dxrt-cli`; NPU driver v2.1.0; firmware v2.5.0 |
+| DX-COM | MediaPipe `.dxnn`: v2.1.0-rc.4 metadata; PINTO `.dxnn`: v2.3.0-rc.5 metadata |
 | Camera | USB, 640×480 |
-| Commit | `99f838d` |
+| Commit | See current `git log` for the exact report revision |
 
 ### 8.2 Palm Detection — NPU (.dxnn) vs CPU (TFLite)
 
@@ -85,21 +85,23 @@
 
 | Palm 백엔드 | 추론 시간 | 비고 |
 |-------------|----------:|------|
-| NPU (.dxnn) | ~12 ms | score 파괴로 **사용 불가** |
-| CPU (TFLite XNNPACK) | ~95 ms | **실사용** (float32, 정확) |
+| NPU (.dxnn) | ~10.4-11.2 ms | score 파괴로 **사용 불가**; no accepted palms, hand stage `0.00 ms` |
+| CPU (TFLite XNNPACK) | ~39-42 ms | **실사용** (float32, 정확) |
 
 ### 8.3 End-to-End 레이턴시 비교
 
 | 백엔드 | Palm | Hand (per hand) | 전체 (2 hands) | 비고 |
 |---------|-----:|----------------:|---------------:|------|
 | `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | 모두 float32, 추가 파일 불필요 |
-| `cpu-baseline` (TFLite) | ~95 ms | ~5 ms | **~105 ms** | float32, npu-full 비교 기준선 |
-| `npu-full` (TFLite+NPU) | ~95 ms | ~8 ms | **~111 ms** | 매 프레임 palm 실행 |
-| `npu` (dual-halves) | 0 ms | ~8 ms × 2 | **~16 ms** | palm 검출 없음, 근사 |
+| `cpu-baseline` (TFLite) | 41.70 ms | 45.55 ms | **87.73 ms** | 10-frame replay smoke, 비교 기준선 |
+| `pinto-cpu` (TFLite+PINTO ONNX) | 38.62 ms | 49.85 ms | **88.85 ms** | 10-frame replay smoke |
+| `npu-full` (TFLite+NPU) | 40.91 ms | 8.57 ms | **49.76 ms** | 10-frame replay smoke, 기본 경로 |
+| `pinto-npu` (TFLite+PINTO DXNN) | 41.21 ms | 9.00 ms | **50.48 ms** | 10-frame replay smoke, 실험용 |
+| `npu` (dual-halves) | 0 ms | NPU-only hand pass | **7.16 ms** | 10-frame replay smoke; palm 검출 없음, 근사 |
 
 > **npu-full / cpu-baseline**: 매 프레임 palm detection을 실행합니다 (`_PALM_REDETECT_EVERY = 0`). 이전에는 landmark 기반 ROI 트래킹으로 palm skip(5프레임에 1번)을 사용했으나, NPU INT8 양자화 편향 누적으로 ROI 드리프트(최대 dy=0.26)가 발생하여 비활성화했습니다.
 > 
-> **cpu-baseline vs npu-full**: 동일 파이프라인이지만 hand landmark를 CPU TFLite(float32) vs NPU .dxnn(INT8)로 실행. palm이 전체 시간의 ~90%를 차지하므로 NPU 가속 효과는 hand landmark 단독으로 비교해야 합니다 (~5ms TFLite vs ~8ms NPU).
+> **cpu-baseline vs npu-full / pinto-npu**: 동일 palm+ROI 구조에서 hand landmark만 CPU float32 또는 NPU INT8로 바꾸어 비교합니다. 현재 replay에서는 CPU palm이 약 40 ms를 차지하므로, NPU 가속 효과는 hand landmark stage의 45-50 ms → 약 9 ms 감소로 해석해야 합니다.
 
 > **Palm skip 최적화는 실험 옵션입니다.** 기본값은 정확도 우선(`--palm-redetect-every 0`, 매 프레임 palm)입니다. `--palm-redetect-every 5`처럼 지정하면 이전 프레임 랜드마크에서 다음 ROI를 예측해 palm detection을 건너뛰며, 지연은 줄지만 NPU INT8 편향이 누적될 수 있어 dataset benchmark로 오차를 반드시 확인합니다.
 
@@ -110,6 +112,7 @@
 ```bash
 cd air_drum_pad
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
+python3 tools/benchmark_dataset.py --backends cpu-baseline,pinto-cpu,pinto-npu,npu-full --limit 10 --warmup 0
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5
 python3 tools/sweep_palm_redetect.py --values 0,1,2,3,5,10 \
   --backends cpu-baseline,npu-full --csv /tmp/palm_sweep.csv
@@ -127,12 +130,17 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
   --landmark-correction models/npu_landmark_correction.dataset.json
 ```
 
-현재 `dataset/` 90프레임에서 확인한 예시 결과(Orange Pi 5 Plus, DX-RT/dx_engine 1.1.4):
+현재 `dataset/` 에서 확인한 예시 결과(Orange Pi 5 Plus). `cpu-baseline`/`npu-full`의 주 비교는 90프레임 기준이며, PINTO rows는 컴파일된 PINTO `.dxnn` 추가 후 수행한 10-frame smoke입니다.
 
 | 구성 | 평균 | P95 | 세부 프로파일 | 비고 |
 |------|-----:|----:|----------------|------|
 | `cpu-baseline`, palm every frame | 84.40 ms | 86.78 ms | palm 39.26 ms + hand 44.80 ms | CPU TFLite 기준 |
 | `npu-full`, palm every frame | 50.32 ms | 54.52 ms | palm 40.93 ms + hand 9.13 ms | 같은 palm+ROI, hand만 NPU |
+| `npu-full`, repeated 5-run measurement | 50.10 ms | 51.71 ms | palm 40.69 ms + hand 9.12 ms | 기본 CPU-palm + NPU-hand profile 재현 |
+| `npu-full --palm-dxnn`, repeated run 1 | 10.39 ms | 12.84 ms | palm 10.34 ms + hand 0.00 ms | Palm NPU path는 빠르지만 accepted palm 없음 |
+| `npu-full --palm-dxnn`, repeated run 2 | 10.88 ms | 13.13 ms | palm 10.82 ms + hand 0.00 ms | 같은 실패 모드 재현 |
+| `pinto-cpu` (10-frame smoke) | 88.91 ms | 97.13 ms | palm 40.19 ms + hand 48.27 ms | PINTO ONNX CPU path는 동작하지만 latency win 아님 |
+| `pinto-npu` (10-frame smoke) | 50.48 ms | 54.48 ms | palm 41.21 ms + hand 9.00 ms | PINTO DXNN path는 동작하며 hand stage를 NPU 속도로 실행 |
 | `npu-full`, `--palm-redetect-every 5` (20프레임 smoke) | 15.29 ms | 50.96 ms | palm frames 3/20, tracking frames 17/20 | 지연 개선, 정확도 회귀 확인 필요 |
 | `npu-full`, `--async-palm` smoke | 10–20 ms대 | 입력 pacing 의존 | tracking + async palm refresh | 실험용 파이프라인 |
 
@@ -140,24 +148,36 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 
 | 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
 |----|-----------:|---------------:|--------------:|---------:|---------:|
-| Right | 90 | 0.0270 | 0.0336 | 0.0532 | 0.1593 |
-| Left | 83 | 0.0256 | 0.0353 | 0.0457 | 0.0734 |
+| Right | 90 | 0.0220 | 0.0267 | 0.0439 | 0.1316 |
+| Left | 83 | 0.0151 | 0.0225 | 0.0304 | 0.0547 |
 
-NPU landmark bias 보정(`models/npu_landmark_correction.bias.json`) 적용 후, 같은 90프레임 training set:
+저장된 NPU landmark 보정 파일도 테스트했지만 현재 replay 기준으로는 기본값으로 쓰지 않습니다. Dataset affine 보정은 right-hand mean error를 0.0314로 악화시켰고, bias 보정도 right-hand mean error를 0.0290으로 악화시켰습니다. 따라서 live demo default는 무보정이며, 보정은 controlled calibration set이 있을 때만 opt-in 합니다.
 
-| 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
-|----|-----------:|---------------:|--------------:|---------:|---------:|
-| Right | 90 | **0.0120** | **0.0128** | **0.0245** | 0.1735 |
-| Left | 83 | **0.0111** | **0.0113** | **0.0220** | **0.0473** |
+PINTO 10-frame smoke landmark 오차(`cpu-baseline` 기준, normalized xy):
 
-더 공격적인 NPU landmark affine 보정(`models/npu_landmark_correction.dataset.json`) 적용 후:
+| Backend | 손 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
+|---------|----|---------------:|--------------:|---------:|---------:|
+| `pinto-cpu` | Right | 0.0176 | 0.0145 | 0.0321 | 0.0330 |
+| `pinto-cpu` | Left | 0.0103 | 0.0064 | 0.0198 | 0.0208 |
+| `pinto-npu` | Right | 0.0205 | 0.0313 | 0.0429 | 0.0441 |
+| `pinto-npu` | Left | 0.0115 | 0.0140 | 0.0278 | 0.0285 |
+| `npu-full` | Right | 0.0068 | 0.0100 | 0.0133 | 0.0154 |
+| `npu-full` | Left | 0.0129 | 0.0178 | 0.0264 | 0.0308 |
 
-| 손 | 매칭 프레임 | 전체 21점 평균 | 손끝 5점 평균 | 평균 max | 최대 max |
-|----|-----------:|---------------:|--------------:|---------:|---------:|
-| Right | 90 | **0.0102** | **0.0112** | **0.0223** | 0.1701 |
-| Left | 83 | **0.0092** | **0.0090** | **0.0193** | **0.0437** |
+`pinto-npu`는 `pinto-cpu` 대비 latency는 크게 개선되지만, 10-frame smoke 기준으로는 default `npu-full`을 대체할 정도의 landmark agreement 우위가 없습니다. PINTO를 palm 없이 `npu` dual-halves 방식에 넣은 임시 비교도 threshold `0.5`에서는 accepted hand가 없었고, threshold `0.0`으로 강제해도 Right `0.1514`, Left `0.1464` 수준이라 정확한 backend로 보기 어렵습니다.
 
-> 보정은 평균/손끝 오차를 약 60% 이상 줄입니다. 현재 live demo 기본값은 `models/npu_landmark_correction.bias.json`입니다. Affine 보정은 offline 평균 오차가 조금 더 낮지만 live skeleton shape를 과도하게 왜곡할 수 있어 기본값에서 제외했습니다. 위 수치는 동일 dataset에 fit/eval한 결과이므로, 제출 전 별도 capture set으로 hold-out 검증이 필요합니다.
+세 축 비교 요약(backend 간 같은 window 비교를 위해 10-frame replay smoke 기준):
+
+| Backend | 평균 latency | FPS 환산 | NPU-active share proxy | `cpu-baseline` 대비 평균 landmark error | 해석 |
+|---------|-------------:|---------:|-----------------------:|----------------------------------------:|------|
+| `cpu-baseline` | 87.73 ms | 11.4 FPS | 0.0% | 0.0000 reference | 정확도 기준선, NPU 없음 |
+| `pinto-cpu` | 88.85 ms | 11.3 FPS | 0.0% | 0.0140 | 동작하지만 속도 이점 없음 |
+| `npu-full` | 49.76 ms | 20.1 FPS | 17.2% | 0.0099 | 현재 NPU 사용 backend 중 정확도 최선 |
+| `pinto-npu` | 50.48 ms | 19.8 FPS | 17.8% | 0.0160 | NPU 속도는 확보했지만 `npu-full` 정확도는 못 이김 |
+| `npu` dual-halves | 7.16 ms | 139.7 FPS | 약 100% | 0.1456 | 가장 빠르고 NPU-bound지만 정확도 탈락 |
+| `npu-full --palm-dxnn` | 10.88 ms | 91.9 FPS | 99.4% | invalid | palm NPU는 실행되나 accepted palm 없음 |
+
+`NPU-active share proxy`는 raw `dxtop` 순간 util이 아니라, benchmark profile에서 NPU-backed stage 시간이 전체 vision-loop latency에서 차지하는 비율입니다. `npu-full`과 `pinto-npu`는 손 landmark stage만 NPU라 share가 약 17-18%로 낮고, CPU palm detection이 전체 latency를 지배합니다. 반면 `npu` dual-halves와 palm `.dxnn` path는 NPU 비중은 높지만 정확도 또는 accepted-palm 조건을 만족하지 못합니다.
 
 CSV/JSON 저장:
 
