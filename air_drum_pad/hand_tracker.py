@@ -750,6 +750,93 @@ class TFLiteHandLandmark:
         self._interp = None
 
 
+class PintoOnnxHandLandmark:
+    """Run PINTO sparse hand landmark ONNX on CPU via ONNXRuntime.
+
+    The PINTO model uses NCHW float32 RGB input in [0, 1] and returns
+    `xyz_x21` as 21 x (x, y, z) patch-pixel coordinates.
+    """
+
+    def __init__(
+        self,
+        model_path: str,
+        *,
+        max_hands: int = 1,
+        score_threshold: float = 0.5,
+    ) -> None:
+        try:
+            import onnxruntime as ort
+        except ImportError as exc:
+            raise ImportError(
+                "PintoOnnxHandLandmark requires onnxruntime."
+            ) from exc
+
+        p = Path(model_path)
+        if not p.is_file():
+            raise FileNotFoundError(f"PINTO hand landmark ONNX not found: {model_path}")
+
+        so = ort.SessionOptions()
+        so.log_severity_level = 3
+        self._sess = ort.InferenceSession(
+            str(p),
+            sess_options=so,
+            providers=["CPUExecutionProvider"],
+        )
+        self._input_name = self._sess.get_inputs()[0].name
+        self._output_names = [o.name for o in self._sess.get_outputs()]
+        self._max_hands = max(1, int(max_hands))
+        self._score_threshold = float(score_threshold)
+
+    def _output_by_name(self, outputs: list[np.ndarray], *needles: str) -> np.ndarray:
+        lowered = [name.lower() for name in self._output_names]
+        for needle in needles:
+            needle_l = needle.lower()
+            for idx, name in enumerate(lowered):
+                if needle_l in name:
+                    return outputs[idx]
+        raise RuntimeError(
+            f"PINTO ONNX output not found: {needles}; outputs={self._output_names}"
+        )
+
+    def process(self, rgb: np.ndarray) -> HandTrackingResult:
+        """Run inference on a 224x224 RGB patch and return patch-normalized landmarks."""
+        h, w = rgb.shape[:2]
+        patch = (
+            cv2.resize(rgb, (224, 224), interpolation=cv2.INTER_LINEAR)
+            if (h, w) != (224, 224)
+            else rgb
+        )
+        tensor = patch.astype(np.float32) / 255.0
+        tensor = np.transpose(tensor, (2, 0, 1))[None, ...]
+        outputs = self._sess.run(None, {self._input_name: tensor})
+
+        lm_raw = self._output_by_name(outputs, "xyz").astype(np.float32).reshape(-1)
+        score_raw = self._output_by_name(outputs, "score").astype(np.float32).reshape(-1)
+        hand_score = float(score_raw[0]) if score_raw.size else 0.0
+        if hand_score < self._score_threshold:
+            return HandTrackingResult([], [])
+
+        handed_score = 0.5
+        try:
+            handed_raw = self._output_by_name(outputs, "right", "handed").astype(np.float32).reshape(-1)
+            if handed_raw.size:
+                handed_score = float(handed_raw[0])
+        except RuntimeError:
+            pass
+        label = "Right" if handed_score >= 0.5 else "Left"
+
+        lm21 = []
+        for j in range(21):
+            x = float(lm_raw[j * 3 + 0]) / 224.0
+            y = float(lm_raw[j * 3 + 1]) / 224.0
+            z = float(lm_raw[j * 3 + 2]) / 224.0
+            lm21.append(_Lm(x, y, z))
+        return HandTrackingResult([_HandLms(tuple(lm21))], [_Handedness(label, hand_score)])
+
+    def close(self) -> None:
+        self._sess = None
+
+
 # --- Full pipeline: Palm detection + Hand landmark (CPU TFLite + optional NPU) ---
 
 
@@ -767,6 +854,7 @@ class FullNpuHandsTracker:
         palm_dxnn_path: Optional[str] = None,
         hand_dxnn_path: Optional[str] = None,
         hand_tflite_path: Optional[str] = None,
+        hand_onnx_path: Optional[str] = None,
         hand_layout_path: Optional[str],
         max_hands: int,
         palm_score_thresh: float = 0.5,
@@ -822,8 +910,13 @@ class FullNpuHandsTracker:
 
         self._anchors = generate_ssd_anchors()
 
-        # Hand landmark model: prefer TFLite (CPU) if given, else .dxnn (NPU)
-        if hand_tflite_path:
+        # Hand landmark model: prefer explicit CPU models, else .dxnn (NPU)
+        if hand_onnx_path:
+            self._hand_tracker = PintoOnnxHandLandmark(
+                hand_onnx_path,
+                max_hands=1,
+            )
+        elif hand_tflite_path:
             self._hand_tracker = TFLiteHandLandmark(
                 hand_tflite_path,
                 max_hands=1,
@@ -1276,6 +1369,7 @@ def create_tracker(
     palm_tflite: Optional[str] = None,
     palm_dxnn: Optional[str] = None,
     hand_tflite: Optional[str] = None,
+    hand_onnx: Optional[str] = None,
     palm_redetect_every: int = 0,
     async_palm: bool = False,
     landmark_correction: Optional[str] = None,
@@ -1295,15 +1389,16 @@ def create_tracker(
             max_hands=max_hands,
         )
 
-    if b in ("npu-full", "npu_full", "cpu-baseline", "cpu_baseline"):
+    if b in ("npu-full", "npu_full", "cpu-baseline", "cpu_baseline", "pinto-cpu", "pinto_cpu"):
         # npu-full: palm TFLite(CPU) + hand .dxnn(NPU)
         # cpu-baseline: palm TFLite(CPU) + hand TFLite(CPU)
+        # pinto-cpu: palm TFLite(CPU) + PINTO hand ONNX(CPU)
 
         # --- Resolve palm model ---
         resolved_palm_dxnn: Optional[str] = None
         resolved_palm_tflite: Optional[str] = None
 
-        if b in ("cpu-baseline", "cpu_baseline"):
+        if b in ("cpu-baseline", "cpu_baseline", "pinto-cpu", "pinto_cpu"):
             # cpu-baseline always uses TFLite palm
             if palm_tflite and palm_tflite.strip():
                 resolved_palm_tflite = palm_tflite.strip()
@@ -1339,6 +1434,7 @@ def create_tracker(
         # --- Resolve hand landmark model ---
         resolved_hand_dxnn: Optional[str] = None
         resolved_hand_tflite: Optional[str] = None
+        resolved_hand_onnx: Optional[str] = None
 
         if b in ("cpu-baseline", "cpu_baseline"):
             # cpu-baseline always uses TFLite hand
@@ -1353,6 +1449,23 @@ def create_tracker(
                         "cpu-baseline 백엔드: --hand-tflite 을 지정하거나 "
                         f"{default_hand} 을 배치하세요."
                     )
+        elif b in ("pinto-cpu", "pinto_cpu"):
+            if hand_onnx and hand_onnx.strip():
+                resolved_hand_onnx = hand_onnx.strip()
+            else:
+                default_hand = (
+                    Path(__file__).resolve().parent
+                    / "models"
+                    / "vendor"
+                    / "pinto_hand_landmark_sparse_Nx3x224x224.onnx"
+                )
+                if default_hand.is_file():
+                    resolved_hand_onnx = str(default_hand)
+                else:
+                    raise SystemExit(
+                        "pinto-cpu 백엔드: --hand-onnx 을 지정하거나 "
+                        f"{default_hand} 을 배치하세요."
+                    )
         else:
             if not dxnn_path or not dxnn_path.strip():
                 raise SystemExit("npu-full 백엔드는 --dxnn (hand landmark) 경로가 필요합니다.")
@@ -1363,14 +1476,15 @@ def create_tracker(
             palm_tflite_path=resolved_palm_tflite,
             hand_dxnn_path=resolved_hand_dxnn,
             hand_tflite_path=resolved_hand_tflite,
+            hand_onnx_path=resolved_hand_onnx,
             hand_layout_path=dxnn_layout,
             max_hands=max_hands,
             palm_redetect_every=palm_redetect_every,
             async_palm=async_palm,
             landmark_correction_path=(
                 landmark_correction
-                if b not in ("cpu-baseline", "cpu_baseline")
+                if b not in ("cpu-baseline", "cpu_baseline", "pinto-cpu", "pinto_cpu")
                 else None
             ),
         )
-    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | npu | npu-full)")
+    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | pinto-cpu | npu | npu-full)")

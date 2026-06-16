@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
         "--backends",
         type=str,
         default="cpu-baseline,npu-full",
-        help="Comma-separated: cpu,cpu-baseline,npu,npu-full",
+        help="Comma-separated: cpu,cpu-baseline,pinto-cpu,npu,npu-full",
     )
     p.add_argument("--max-hands", type=int, default=2, choices=(1, 2))
     p.add_argument("--model-complexity", type=int, default=0, choices=(0, 1))
@@ -81,6 +81,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--palm-tflite", type=str, default="", help="Palm TFLite path")
     p.add_argument("--palm-dxnn", type=str, default="", help="Palm .dxnn path (not recommended)")
     p.add_argument("--hand-tflite", type=str, default="", help="Hand landmark TFLite path")
+    p.add_argument("--hand-onnx", type=str, default="", help="PINTO hand landmark ONNX path")
     p.add_argument(
         "--landmark-correction",
         type=str,
@@ -141,11 +142,26 @@ def _split_backends(raw: str) -> list[str]:
     out = [b.strip().lower() for b in raw.split(",") if b.strip()]
     if not out:
         raise SystemExit("--backends must contain at least one backend")
-    valid = {"cpu", "cpu-baseline", "cpu_baseline", "npu", "npu-full", "npu_full"}
+    valid = {
+        "cpu",
+        "cpu-baseline",
+        "cpu_baseline",
+        "pinto-cpu",
+        "pinto_cpu",
+        "npu",
+        "npu-full",
+        "npu_full",
+    }
     bad = [b for b in out if b not in valid]
     if bad:
         raise SystemExit(f"Unknown backend(s): {bad}. Valid: {sorted(valid)}")
-    return ["cpu-baseline" if b == "cpu_baseline" else "npu-full" if b == "npu_full" else b for b in out]
+    return [
+        "cpu-baseline" if b == "cpu_baseline"
+        else "pinto-cpu" if b == "pinto_cpu"
+        else "npu-full" if b == "npu_full"
+        else b
+        for b in out
+    ]
 
 
 def _paths_for_dataset(dataset: str, pattern: str, limit: int) -> list[Path]:
@@ -197,6 +213,7 @@ def make_tracker(backend: str, args: argparse.Namespace):
         palm_tflite=args.palm_tflite.strip() or None,
         palm_dxnn=args.palm_dxnn.strip() or None,
         hand_tflite=args.hand_tflite.strip() or None,
+        hand_onnx=args.hand_onnx.strip() or None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
         landmark_correction=args.landmark_correction.strip() or None,

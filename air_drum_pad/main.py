@@ -221,10 +221,10 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         type=str,
         default="npu-full",
-        choices=("cpu", "cpu-baseline", "npu", "npu-full"),
+        choices=("cpu", "cpu-baseline", "pinto-cpu", "npu", "npu-full"),
         help=(
             "손 추론: cpu=MediaPipe, "
-            "cpu-baseline=palm+hand TFLite(CPU), npu=DX-RT .dxnn, "
+            "cpu-baseline=palm+hand TFLite(CPU), pinto-cpu=palm TFLite + PINTO hand ONNX(CPU), npu=DX-RT .dxnn, "
             "npu-full=palm TFLite + hand .dxnn(default)"
         ),
     )
@@ -264,6 +264,13 @@ def parse_args() -> argparse.Namespace:
         help="cpu-baseline 백엔드: hand landmark TFLite 경로 (기본: models/vendor/hand_landmark_lite.tflite 자동탐색)",
     )
     p.add_argument(
+        "--hand-onnx",
+        type=str,
+        default="models/vendor/pinto_hand_landmark_sparse_Nx3x224x224.onnx",
+        metavar="PATH",
+        help="pinto-cpu 백엔드: hand landmark ONNX 경로",
+    )
+    p.add_argument(
         "--palm-redetect-every",
         type=int,
         default=0,
@@ -284,11 +291,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument(
         "--landmark-correction",
         type=str,
-        default="models/npu_landmark_correction.bias.json",
+        default="",
         metavar="PATH",
         help=(
             "npu-full: CPU baseline 기준으로 학습한 NPU landmark xy 보정 JSON "
-            "(기본: models/npu_landmark_correction.bias.json, 빈 문자열로 비활성화). "
+            "(기본 비활성화, 예: models/npu_landmark_correction.bias.json). "
             "tools/calibrate_npu_landmarks.py 로 생성."
         ),
     )
@@ -543,6 +550,7 @@ def main() -> int:
         palm_tflite=args.palm_tflite if args.palm_tflite.strip() else None,
         palm_dxnn=args.palm_dxnn if args.palm_dxnn.strip() else None,
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
+        hand_onnx=args.hand_onnx if args.hand_onnx.strip() else None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
         landmark_correction=landmark_correction or None,
@@ -554,6 +562,8 @@ def main() -> int:
     be = f"{args.backend.upper()}"
     if args.backend in ("npu", "npu-full") and args.dxnn.strip():
         be = f"{args.backend.upper()}:{Path(args.dxnn).name}"
+    if args.backend == "pinto-cpu" and args.hand_onnx.strip():
+        be = f"{args.backend.upper()}:{Path(args.hand_onnx).name}"
     if landmark_correction and args.backend == "npu-full":
         be += f"+CALIB:{Path(landmark_correction).name}"
     mapping_hint = "(손,손가락)→음" if args.piano else "on-screen rectangle pad → drum sound"

@@ -21,10 +21,12 @@ PALM_TFLITE="${PALM_TFLITE:-$_DEFAULT_PALM}"
 _DEFAULT_LAYOUT="$(pwd)/models/dxnn_layout.mediapipe_hand_lite.json"
 LAYOUT="${DXNN_LAYOUT:-$_DEFAULT_LAYOUT}"
 
-_DEFAULT_CORR="$(pwd)/models/npu_landmark_correction.dataset.json"
 CORRECTION="${LANDMARK_CORRECTION:-}"
-if [[ -z "$CORRECTION" && -f "$_DEFAULT_CORR" && "${USE_LANDMARK_CORRECTION:-1}" != "0" ]]; then
-  CORRECTION="$_DEFAULT_CORR"
+if [[ -z "$CORRECTION" && "${USE_LANDMARK_CORRECTION:-0}" == "1" ]]; then
+  _DEFAULT_CORR="$(pwd)/models/npu_landmark_correction.bias.json"
+  if [[ -f "$_DEFAULT_CORR" ]]; then
+    CORRECTION="$_DEFAULT_CORR"
+  fi
 fi
 
 MH="${MAX_HANDS:-2}"

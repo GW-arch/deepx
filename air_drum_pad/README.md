@@ -134,7 +134,7 @@ python3 main.py --backend cpu-baseline \
 
 #### npu-full 사용 예시
 
-`npu-full`은 `main.py` 기본 백엔드입니다. 기본 hand `.dxnn`, layout JSON, palm TFLite, dataset-calibrated bias landmark correction JSON은 `models/vendor/`와 `models/`에서 자동으로 선택됩니다. 기본 화면은 selfie mirror이며, live UI는 guided evaluator와 같은 windowed PANDA title/yellow skeleton 스타일을 사용합니다. 데모 영상 촬영에서는 endpoint 정확도를 위해 `demo_run.py`가 별도로 `cpu` backend를 기본 사용합니다.
+`npu-full`은 `main.py` 기본 백엔드입니다. 기본 hand `.dxnn`, layout JSON, palm TFLite는 `models/vendor/`와 `models/`에서 자동으로 선택됩니다. Landmark correction은 camera/pose-specific이라 기본 비활성화되어 있으며, 필요할 때만 명시적으로 켭니다. 기본 화면은 selfie mirror이며, live UI는 guided evaluator와 같은 windowed PANDA title/yellow skeleton 스타일을 사용합니다. 데모 영상 촬영에서는 endpoint 정확도를 위해 `demo_run.py`가 별도로 `cpu` backend를 기본 사용합니다.
 
 ```bash
 python3 main.py --backend npu-full --max-hands 2
@@ -144,11 +144,12 @@ python3 main.py --backend npu-full \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite.json \
   --palm-tflite models/vendor/palm_detection_lite.tflite \
-  --landmark-correction models/npu_landmark_correction.bias.json \
   --max-hands 2
 
-# 보정 없이 비교/디버깅하려면 빈 문자열로 끕니다.
-python3 main.py --backend npu-full --landmark-correction "" --max-hands 2
+# 보정이 실제 camera/pose에서 좋아지는지 확인한 뒤 opt-in 합니다.
+python3 main.py --backend npu-full \
+  --landmark-correction models/npu_landmark_correction.bias.json \
+  --max-hands 2
 ```
 
 `--palm-tflite` 생략 시 `models/vendor/palm_detection_lite.tflite` 자동 탐색. `--palm-dxnn` 플래그도 존재하나 양자화 품질 문제로 **명시적으로 지정한 실험에서만 사용**하세요.
@@ -197,7 +198,7 @@ python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full \
 
 `--palm-redetect-every 0`이 기본값이며 매 프레임 palm detection을 실행합니다(드리프트 최소). `N>0`과 `--async-palm`은 지연을 줄이는 **실험 옵션**입니다.
 
-`--landmark-correction`은 현재 dataset에서 학습한 NPU→CPU xy 보정이며 `main.py`의 기본값입니다. Live 기본값은 `models/npu_landmark_correction.bias.json`입니다. 90프레임 training set 기준 `npu-full` 평균 landmark 오차가 Right `0.0270→0.0120`, Left `0.0256→0.0111`로 줄었고, 손끝 오차는 Right `0.0336→0.0128`, Left `0.0353→0.0113`로 줄었습니다. 더 공격적인 affine 파일(`models/npu_landmark_correction.dataset.json`)은 평균 오차를 조금 더 낮추지만 live skeleton을 왜곡할 수 있어 기본값으로 쓰지 않습니다. 두 보정 모두 dataset-specific이므로 다른 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다.
+`--landmark-correction`은 현재 dataset에서 학습한 NPU→CPU xy 보정입니다. 두 보정 파일 모두 dataset-specific이므로 다른 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다. 이 보드의 현재 replay 기준으로는 무보정이 전체 평균 오차가 가장 낮았고, 저장된 보정 파일은 특히 Right hand 후반 프레임에서 skeleton을 더 왜곡했습니다.
 
 #### 품질 체크 / 회귀 테스트
 

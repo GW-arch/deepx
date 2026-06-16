@@ -150,7 +150,7 @@ python3 main.py --backend npu-full \
   --landmark-correction models/npu_landmark_correction.dataset.json
 ```
 
-현재 저장소의 `models/npu_landmark_correction.dataset.json`은 `dataset/` 90프레임으로 fit한 예시입니다. 같은 dataset에서는 평균 normalized xy error가 Right `0.0270→0.0102`, Left `0.0256→0.0092`로 감소합니다. 단, dataset-specific calibration이므로 새 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다.
+현재 저장소의 `models/npu_landmark_correction.dataset.json`은 `dataset/` 90프레임으로 fit한 예시입니다. Dataset-specific calibration이므로 새 조명/카메라/손 자세에서는 별도 hold-out 검증이 필요합니다. Live 기본 실행은 보정 없이 시작하고, 위 벤치마크로 실제 환경에서 오차가 줄어드는 것을 확인한 뒤 `--landmark-correction`을 opt-in 하세요.
 
 ## 레이아웃 JSON 키 요약
 

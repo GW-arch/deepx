@@ -846,6 +846,7 @@ def run_live(args: argparse.Namespace) -> int:
         palm_tflite=args.palm_tflite if args.palm_tflite.strip() else None,
         palm_dxnn=args.palm_dxnn if args.palm_dxnn.strip() else None,
         hand_tflite=args.hand_tflite if args.hand_tflite.strip() else None,
+        hand_onnx=args.hand_onnx if args.hand_onnx.strip() else None,
         palm_redetect_every=args.palm_redetect_every,
         async_palm=args.async_palm,
         landmark_correction=(
@@ -1233,15 +1234,16 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("--drum-pads", type=str, default="", help="Drum pad layout JSON")
 
-    p.add_argument("--backend", choices=("cpu", "cpu-baseline", "npu", "npu-full"), default="cpu")
+    p.add_argument("--backend", choices=("cpu", "cpu-baseline", "pinto-cpu", "npu", "npu-full"), default="cpu")
     p.add_argument("--dxnn", type=str, default="")
     p.add_argument("--dxnn-layout", type=str, default="")
     p.add_argument("--palm-tflite", type=str, default="")
     p.add_argument("--palm-dxnn", type=str, default="")
     p.add_argument("--hand-tflite", type=str, default="")
+    p.add_argument("--hand-onnx", type=str, default="models/vendor/pinto_hand_landmark_sparse_Nx3x224x224.onnx")
     p.add_argument("--palm-redetect-every", type=int, default=0)
     p.add_argument("--async-palm", action="store_true")
-    p.add_argument("--landmark-correction", type=str, default="models/npu_landmark_correction.bias.json")
+    p.add_argument("--landmark-correction", type=str, default="")
     return p.parse_args(argv)
 
 
