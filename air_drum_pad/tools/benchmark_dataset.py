@@ -72,7 +72,7 @@ def parse_args() -> argparse.Namespace:
         "--backends",
         type=str,
         default="cpu-baseline,npu-full",
-        help="Comma-separated: cpu,cpu-baseline,pinto-cpu,npu,npu-full",
+        help="Comma-separated: cpu,cpu-baseline,pinto-cpu,pinto-npu,npu,npu-full",
     )
     p.add_argument("--max-hands", type=int, default=2, choices=(1, 2))
     p.add_argument("--model-complexity", type=int, default=0, choices=(0, 1))
@@ -148,6 +148,8 @@ def _split_backends(raw: str) -> list[str]:
         "cpu_baseline",
         "pinto-cpu",
         "pinto_cpu",
+        "pinto-npu",
+        "pinto_npu",
         "npu",
         "npu-full",
         "npu_full",
@@ -158,6 +160,7 @@ def _split_backends(raw: str) -> list[str]:
     return [
         "cpu-baseline" if b == "cpu_baseline"
         else "pinto-cpu" if b == "pinto_cpu"
+        else "pinto-npu" if b == "pinto_npu"
         else "npu-full" if b == "npu_full"
         else b
         for b in out
@@ -192,6 +195,8 @@ def _resolve_dxnn_layout(backend: str, args: argparse.Namespace) -> str | None:
         return _default_path("models", "dxnn_layout.mediapipe_hand_lite_dual.json") or None
     if backend == "npu-full":
         return _default_path("models", "dxnn_layout.mediapipe_hand_lite.json") or None
+    if backend == "pinto-npu":
+        return _default_path("models", "dxnn_layout.pinto_hand_landmark_sparse.json") or None
     return None
 
 
@@ -200,6 +205,8 @@ def _resolve_dxnn(backend: str, args: argparse.Namespace) -> str:
         return args.dxnn.strip()
     if backend in ("npu", "npu-full"):
         return _default_path("models", "vendor", "hand_landmark_lite.dxnn")
+    if backend == "pinto-npu":
+        return _default_path("models", "vendor", "pinto_hand_landmark_sparse.dxnn")
     return ""
 
 

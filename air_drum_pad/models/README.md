@@ -21,6 +21,8 @@ MediaPipe **앱 전체**가 아니라, 그 안의 **신경망 파일**을 ONNX�
   └─ Hand Landmark                          ← 224×224 NHWC
        ├─ npu-full: .dxnn (NPU int8, uint8 입력)
        ├─ cpu-baseline: TFLite (CPU float32, float32 입력)
+       ├─ pinto-npu: PINTO .dxnn (NPU int8, uint8 입력)
+       ├─ pinto-cpu: PINTO ONNX (CPU float32 입력)
        └─ 21 keypoints + handedness + score
 ```
 
@@ -123,6 +125,10 @@ python3 main.py --backend npu-full \
   --max-hands 2 --piano --camera 0
 # cpu-baseline: palm TFLite + hand TFLite (모두 CPU, 비교 기준선)
 python3 main.py --backend cpu-baseline --max-hands 2 --piano --camera 0
+# pinto-npu: palm TFLite + PINTO hand landmark DXNN (실험용)
+python3 main.py --backend pinto-npu --max-hands 2 --piano --camera 0
+# pinto-cpu: palm TFLite + PINTO hand landmark ONNX (비교 기준)
+python3 main.py --backend pinto-cpu --max-hands 2 --piano --camera 0
 # npu 백엔드 (dual-halves, palm detection 없음)
 python3 main.py --backend npu \
   --dxnn "$DXNN" \

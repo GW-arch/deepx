@@ -1234,7 +1234,11 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
     )
     p.add_argument("--drum-pads", type=str, default="", help="Drum pad layout JSON")
 
-    p.add_argument("--backend", choices=("cpu", "cpu-baseline", "pinto-cpu", "npu", "npu-full"), default="cpu")
+    p.add_argument(
+        "--backend",
+        choices=("cpu", "cpu-baseline", "pinto-cpu", "pinto-npu", "npu", "npu-full"),
+        default="cpu",
+    )
     p.add_argument("--dxnn", type=str, default="")
     p.add_argument("--dxnn-layout", type=str, default="")
     p.add_argument("--palm-tflite", type=str, default="")

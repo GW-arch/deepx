@@ -1,12 +1,12 @@
 {
   "input": {
     "tensor_name": "input",
-    "tensor_layout": "nchw",
+    "tensor_layout": "nhwc",
     "color_order": "rgb",
     "square_pad": true,
     "normalize": {
-      "mode": "scale_255",
-      "dtype": "float32"
+      "mode": "none",
+      "dtype": "uint8"
     }
   },
   "inference": {
@@ -19,7 +19,11 @@
     "max_hands": 1
   },
   "handedness": {
-    "mode": "wrist_x_screen"
+    "mode": "tensor_binary",
+    "tensor_index": 2,
+    "threshold": 0.5,
+    "left_label": "Left",
+    "right_label": "Right"
   },
   "confidence": {
     "tensor_index": 1,

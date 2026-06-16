@@ -60,6 +60,9 @@ python3 main.py --backend cpu --piano --camera 0
 python3 main.py --backend npu --piano --camera 0 \
   --dxnn models/vendor/hand_landmark_lite.dxnn \
   --dxnn-layout models/dxnn_layout.mediapipe_hand_lite_dual.json
+
+# ── 5) PINTO NPU 실험: Palm(CPU TFLite) + PINTO hand(.dxnn NPU) ──
+python3 main.py --backend pinto-npu --piano --camera 0
 ```
 
 ### 데모 비디오용 쉬운 드럼 런처
@@ -103,17 +106,21 @@ Tiny variation every 4th bar:
 | `cpu-baseline` | CPU (TFLite, float32) | CPU (TFLite, float32) | NPU 없이 npu-full과 동일 파이프라인 (비교 기준선) |
 | `npu` | 없음 (dual-halves 근사) | **NPU** (.dxnn, int8) | palm 검출 없이 화면 좌우 반분할 |
 | `npu-full` (기본) | CPU (TFLite, float32) | **NPU** (.dxnn, int8) | 정식 2-hand 파이프라인, guided-style UI 기본 |
+| `pinto-cpu` | CPU (TFLite, float32) | CPU (PINTO ONNX, float32) | PINTO sparse hand model 비교 기준 |
+| `pinto-npu` | CPU (TFLite, float32) | **NPU** (PINTO .dxnn, int8) | PINTO sparse hand model NPU adoption 실험 |
 
 > **왜 palm은 CPU인가?** Palm detection .dxnn을 INT8 양자화하면 score head가 파괴됩니다 (ONNX↔NPU 상관 -0.11). DeepX NPU는 INT8 전용 가속기이므로 float32 실행이 불가능합니다. 따라서 palm은 TFLite(CPU, float32)로, hand landmark만 NPU(int8)로 실행하는 하이브리드가 최선입니다. 자세한 분석: [`models/README.md`](models/README.md).
 
 #### 성능 비교
 
-| 구성 | Palm 추론 | Hand 추론 (per hand) | 전체 (2 hands) | 비고 |
-|------|----------:|---------------------:|---------------:|------|
-| `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | 모두 float32 |
-| `cpu-baseline` (TFLite palm + TFLite hand) | ~95 ms | ~5 ms | ~105 ms | 모두 float32, 비교 기준선 |
-| `npu-full` (TFLite palm + NPU hand) | ~95 ms | ~8 ms | ~111 ms | 매 프레임 palm 실행 |
-| `npu` (dual-halves) | 0 ms | ~8 ms × 2 | ~16 ms | palm 검출 없음, 근사 |
+| 구성 | Palm 단계 | Hand 단계 | 전체 | 비고 |
+|------|----------:|----------:|-----:|------|
+| `cpu` (MediaPipe) | ~15 ms | ~10 ms | ~35 ms | prior live-oriented 측정 |
+| `cpu-baseline` (TFLite palm + TFLite hand) | 41.70 ms | 45.55 ms | 87.73 ms | 10-frame replay smoke, 비교 기준선 |
+| `pinto-cpu` (TFLite palm + PINTO ONNX hand) | 38.62 ms | 49.85 ms | 88.85 ms | 10-frame replay smoke |
+| `npu-full` (TFLite palm + NPU hand) | 40.91 ms | 8.57 ms | 49.76 ms | 10-frame replay smoke, 기본 경로 |
+| `pinto-npu` (TFLite palm + PINTO NPU hand) | 41.21 ms | 9.00 ms | 50.48 ms | 10-frame replay smoke, 실험용 |
+| `npu` (dual-halves) | 0 ms | ~8 ms × 2 | ~16 ms | prior live-oriented 측정, palm 검출 없음 |
 
 > **npu-full은 매 프레임 palm detection을 실행합니다.** 이전에는 landmark 기반 ROI 트래킹으로 palm을 5프레임에 1번만 실행했으나, NPU INT8 양자화 편향이 프레임마다 누적되어 드리프트(최대 dy=0.26)를 일으켰습니다. 항상 palm을 실행하면 드리프트가 제거됩니다(mean |dy|=0.01).
 
@@ -161,6 +168,9 @@ python3 main.py --backend npu-full \
 ```bash
 # 기본: cpu-baseline vs npu-full, 동일 palm+ROI 파이프라인 비교
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full
+
+# PINTO adoption 비교
+python3 tools/benchmark_dataset.py --backends cpu-baseline,pinto-cpu,pinto-npu,npu-full --limit 10 --warmup 0
 
 # palm skip/ROI tracking 실험: palm 1회 후 최대 5프레임은 landmark ROI로 추적
 python3 tools/benchmark_dataset.py --backends cpu-baseline,npu-full --palm-redetect-every 5

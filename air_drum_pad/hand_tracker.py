@@ -637,7 +637,16 @@ class DxnnHandTracker:
             )
             hands_work.append((hi, _HandLms(lm21)))
 
-        handed_mode = str(self._layout.get("handedness", {}).get("mode", "wrist_x_screen"))
+        handed_cfg = self._layout.get("handedness", {})
+        handed_mode = str(handed_cfg.get("mode", "wrist_x_screen"))
+        handed_tensor: Optional[np.ndarray] = None
+        handed_threshold = float(handed_cfg.get("threshold", 0.5))
+        if handed_mode in ("tensor_binary", "binary_tensor", "model_binary"):
+            hti = handed_cfg.get("tensor_index", None)
+            if hti is not None:
+                hi = int(hti)
+                if 0 <= hi < len(outs):
+                    handed_tensor = np.asarray(outs[hi]).astype(np.float32).reshape(-1)
         lms_list: list[_HandLms] = []
         handed: list[_Handedness] = []
 
@@ -656,6 +665,23 @@ class DxnnHandTracker:
                     float(scores[orig_hi])
                     if scores is not None and orig_hi < scores.size
                     else 0.99
+                )
+                lms_list.append(hlm)
+                handed.append(_Handedness(lab, sc))
+        elif handed_tensor is not None:
+            right_label = str(handed_cfg.get("right_label", "Right"))
+            left_label = str(handed_cfg.get("left_label", "Left"))
+            for orig_hi, hlm in hands_work:
+                prob = (
+                    float(handed_tensor[orig_hi])
+                    if orig_hi < handed_tensor.size
+                    else handed_threshold
+                )
+                lab = right_label if prob >= handed_threshold else left_label
+                sc = (
+                    float(scores[orig_hi])
+                    if scores is not None and orig_hi < scores.size
+                    else max(prob, 1.0 - prob)
                 )
                 lms_list.append(hlm)
                 handed.append(_Handedness(lab, sc))
@@ -844,7 +870,8 @@ class FullNpuHandsTracker:
     """Palm detection → ROI warp → Hand landmark.
 
     Palm 은 .dxnn (NPU) 또는 TFLite (CPU) 중 하나로 실행.
-    Hand landmark 는 DxnnHandTracker (.dxnn NPU) 또는 TFLiteHandLandmark (.tflite CPU).
+    Hand landmark 는 DxnnHandTracker (.dxnn NPU), TFLiteHandLandmark (.tflite CPU),
+    또는 PintoOnnxHandLandmark (.onnx CPU).
     """
 
     def __init__(
@@ -1389,10 +1416,20 @@ def create_tracker(
             max_hands=max_hands,
         )
 
-    if b in ("npu-full", "npu_full", "cpu-baseline", "cpu_baseline", "pinto-cpu", "pinto_cpu"):
+    if b in (
+        "npu-full",
+        "npu_full",
+        "cpu-baseline",
+        "cpu_baseline",
+        "pinto-cpu",
+        "pinto_cpu",
+        "pinto-npu",
+        "pinto_npu",
+    ):
         # npu-full: palm TFLite(CPU) + hand .dxnn(NPU)
         # cpu-baseline: palm TFLite(CPU) + hand TFLite(CPU)
         # pinto-cpu: palm TFLite(CPU) + PINTO hand ONNX(CPU)
+        # pinto-npu: palm TFLite(CPU) + PINTO hand DXNN(NPU)
 
         # --- Resolve palm model ---
         resolved_palm_dxnn: Optional[str] = None
@@ -1425,7 +1462,7 @@ def create_tracker(
                 resolved_palm_tflite = str(default_tflite)
             else:
                 raise SystemExit(
-                    "npu-full 백엔드: --palm-tflite 을 지정하거나 "
+                    "npu-full/pinto-npu 백엔드: --palm-tflite 을 지정하거나 "
                     f"{default_tflite} 을 배치하세요. "
                     "Palm .dxnn은 양자화 품질 문제로 자동 선택하지 않습니다 "
                     "(실험 시 --palm-dxnn 명시)."
@@ -1435,6 +1472,7 @@ def create_tracker(
         resolved_hand_dxnn: Optional[str] = None
         resolved_hand_tflite: Optional[str] = None
         resolved_hand_onnx: Optional[str] = None
+        resolved_hand_layout = dxnn_layout
 
         if b in ("cpu-baseline", "cpu_baseline"):
             # cpu-baseline always uses TFLite hand
@@ -1466,6 +1504,35 @@ def create_tracker(
                         "pinto-cpu 백엔드: --hand-onnx 을 지정하거나 "
                         f"{default_hand} 을 배치하세요."
                     )
+        elif b in ("pinto-npu", "pinto_npu"):
+            base = Path(__file__).resolve().parent / "models"
+            default_dxnn = base / "vendor" / "pinto_hand_landmark_sparse.dxnn"
+            default_layout = base / "dxnn_layout.pinto_hand_landmark_sparse.json"
+            if (
+                dxnn_path
+                and dxnn_path.strip()
+                and Path(dxnn_path.strip()).name != "hand_landmark_lite.dxnn"
+            ):
+                resolved_hand_dxnn = dxnn_path.strip()
+            elif default_dxnn.is_file():
+                resolved_hand_dxnn = str(default_dxnn)
+            else:
+                raise SystemExit(
+                    "pinto-npu 백엔드: --dxnn 을 지정하거나 "
+                    f"{default_dxnn} 을 배치하세요."
+                )
+            if (
+                not resolved_hand_layout
+                or not str(resolved_hand_layout).strip()
+                or Path(str(resolved_hand_layout)).name == "dxnn_layout.mediapipe_hand_lite.json"
+            ):
+                if default_layout.is_file():
+                    resolved_hand_layout = str(default_layout)
+                else:
+                    raise SystemExit(
+                        "pinto-npu 백엔드: --dxnn-layout 을 지정하거나 "
+                        f"{default_layout} 을 배치하세요."
+                    )
         else:
             if not dxnn_path or not dxnn_path.strip():
                 raise SystemExit("npu-full 백엔드는 --dxnn (hand landmark) 경로가 필요합니다.")
@@ -1477,14 +1544,24 @@ def create_tracker(
             hand_dxnn_path=resolved_hand_dxnn,
             hand_tflite_path=resolved_hand_tflite,
             hand_onnx_path=resolved_hand_onnx,
-            hand_layout_path=dxnn_layout,
+            hand_layout_path=resolved_hand_layout,
             max_hands=max_hands,
             palm_redetect_every=palm_redetect_every,
             async_palm=async_palm,
             landmark_correction_path=(
                 landmark_correction
-                if b not in ("cpu-baseline", "cpu_baseline", "pinto-cpu", "pinto_cpu")
+                if b not in (
+                    "cpu-baseline",
+                    "cpu_baseline",
+                    "pinto-cpu",
+                    "pinto_cpu",
+                    "pinto-npu",
+                    "pinto_npu",
+                )
                 else None
             ),
         )
-    raise SystemExit(f"알 수 없는 --backend: {backend} (cpu | cpu-baseline | pinto-cpu | npu | npu-full)")
+    raise SystemExit(
+        f"알 수 없는 --backend: {backend} "
+        "(cpu | cpu-baseline | pinto-cpu | pinto-npu | npu | npu-full)"
+    )

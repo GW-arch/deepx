@@ -33,6 +33,12 @@ class CliDefaultTests(unittest.TestCase):
         self.assertEqual(args.backend, "pinto-cpu")
         self.assertTrue(args.hand_onnx.endswith("pinto_hand_landmark_sparse_Nx3x224x224.onnx"))
 
+    def test_live_cli_accepts_pinto_npu_backend(self) -> None:
+        with patch.object(sys, "argv", ["main.py", "--backend", "pinto-npu"]):
+            args = live_main.parse_args()
+
+        self.assertEqual(args.backend, "pinto-npu")
+
     def test_guided_eval_does_not_apply_landmark_correction_by_default(self) -> None:
         args = guided_eval.parse_args([])
 

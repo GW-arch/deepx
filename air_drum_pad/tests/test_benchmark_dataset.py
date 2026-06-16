@@ -13,8 +13,8 @@ from tools import benchmark_dataset as bd
 class BenchmarkDatasetHelperTests(unittest.TestCase):
     def test_split_backends_normalizes_aliases(self) -> None:
         self.assertEqual(
-            bd._split_backends("cpu_baseline,pinto_cpu,npu_full,cpu"),
-            ["cpu-baseline", "pinto-cpu", "npu-full", "cpu"],
+            bd._split_backends("cpu_baseline,pinto_cpu,pinto_npu,npu_full,cpu"),
+            ["cpu-baseline", "pinto-cpu", "pinto-npu", "npu-full", "cpu"],
         )
         with self.assertRaises(SystemExit):
             bd._split_backends("bogus")

@@ -221,10 +221,12 @@ def parse_args() -> argparse.Namespace:
         "--backend",
         type=str,
         default="npu-full",
-        choices=("cpu", "cpu-baseline", "pinto-cpu", "npu", "npu-full"),
+        choices=("cpu", "cpu-baseline", "pinto-cpu", "pinto-npu", "npu", "npu-full"),
         help=(
             "손 추론: cpu=MediaPipe, "
-            "cpu-baseline=palm+hand TFLite(CPU), pinto-cpu=palm TFLite + PINTO hand ONNX(CPU), npu=DX-RT .dxnn, "
+            "cpu-baseline=palm+hand TFLite(CPU), "
+            "pinto-cpu=palm TFLite + PINTO hand ONNX(CPU), "
+            "pinto-npu=palm TFLite + PINTO hand DXNN(NPU), npu=DX-RT .dxnn, "
             "npu-full=palm TFLite + hand .dxnn(default)"
         ),
     )
@@ -276,7 +278,7 @@ def parse_args() -> argparse.Namespace:
         default=0,
         metavar="N",
         help=(
-            "cpu-baseline/npu-full 실험용: palm detection 후 N프레임 동안 landmark 기반 ROI 추적만 수행. "
+            "cpu-baseline/npu-full/pinto-npu 실험용: palm detection 후 N프레임 동안 landmark 기반 ROI 추적만 수행. "
             "0이면 매 프레임 palm 실행(기본, 드리프트 최소)."
         ),
     )
@@ -284,7 +286,7 @@ def parse_args() -> argparse.Namespace:
         "--async-palm",
         action="store_true",
         help=(
-            "cpu-baseline/npu-full 실험용: palm detection을 백그라운드 스레드에서 돌리고 "
+            "cpu-baseline/npu-full/pinto-npu 실험용: palm detection을 백그라운드 스레드에서 돌리고 "
             "그 사이 이전 ROI로 hand landmark를 계속 추적합니다."
         ),
     )
@@ -564,6 +566,13 @@ def main() -> int:
         be = f"{args.backend.upper()}:{Path(args.dxnn).name}"
     if args.backend == "pinto-cpu" and args.hand_onnx.strip():
         be = f"{args.backend.upper()}:{Path(args.hand_onnx).name}"
+    if args.backend == "pinto-npu":
+        dxnn_name = (
+            "pinto_hand_landmark_sparse.dxnn"
+            if (not args.dxnn.strip() or Path(args.dxnn).name == "hand_landmark_lite.dxnn")
+            else Path(args.dxnn).name
+        )
+        be = f"{args.backend.upper()}:{dxnn_name}"
     if landmark_correction and args.backend == "npu-full":
         be += f"+CALIB:{Path(landmark_correction).name}"
     mapping_hint = "(손,손가락)→음" if args.piano else "on-screen rectangle pad → drum sound"

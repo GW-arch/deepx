@@ -290,7 +290,7 @@ ls -lh models/vendor/pinto_hand_landmark_sparse.dxnn
 
 ## Step 9: Board-Side Smoke Test
 
-The app currently has a `pinto-cpu` backend. A NPU-specific PINTO runtime adapter still needs to be wired after the `.dxnn` exists. First verify that the board can load the compiled model with DXRT:
+The app now has both `pinto-cpu` and `pinto-npu` backends. First verify that the board can load the compiled model with DXRT:
 
 ```bash
 python3 - <<'PY'
@@ -300,7 +300,8 @@ import numpy as np
 path = "models/vendor/pinto_hand_landmark_sparse.dxnn"
 ie = InferenceEngine(path)
 print("inputs:", ie.get_input_tensors_info())
-x = np.zeros((1, 3, 224, 224), dtype=np.float32)
+print("outputs:", ie.get_output_tensors_info())
+x = np.zeros((1, 224, 224, 3), dtype=np.uint8)
 outs = ie.run([x])
 for i, out in enumerate(outs):
     arr = np.asarray(out)
@@ -310,6 +311,16 @@ PY
 ```
 
 If the input tensor info reports `uint8` or NHWC instead of `float32` NCHW, adjust the smoke input shape/dtype to match `ie.get_input_tensors_info()`.
+
+Board result from the current transferred artifact:
+
+```text
+inputs: input [1, 224, 224, 3] uint8
+outputs:
+  0 xyz_x21 [1, 63] float32
+  1 hand_score [1, 1] float32
+  2 lefthand_0_or_righthand_1 [1, 1] float32
+```
 
 ## Success Criteria
 
@@ -325,7 +336,7 @@ Compilation is successful when all of the following are true:
 
 ## Expected Follow-Up After Compile
 
-After the `.dxnn` is available, implement a `pinto-npu` backend in `hand_tracker.py` by adapting the current `PintoOnnxHandLandmark` preprocessing/postprocessing to `dx_engine`.
+After the `.dxnn` is available, use the wired `pinto-npu` backend in `hand_tracker.py`. The backend uses CPU TFLite palm detection plus PINTO hand-landmark DXNN on the NPU.
 
 The current CPU PINTO reference path is:
 
@@ -343,6 +354,19 @@ profile: palm=40.19 ms, hand=48.27 ms
 ```
 
 The NPU follow-up should compare `pinto-npu` against both `pinto-cpu` and the current default `npu-full`.
+
+Current board comparison:
+
+```bash
+python3 tools/benchmark_dataset.py --backends cpu-baseline,pinto-cpu,pinto-npu,npu-full --limit 10 --warmup 0
+```
+
+```text
+pinto-npu mean 50.48 ms, p95 54.48 ms, profile palm=41.21 ms + hand=9.00 ms
+npu-full  mean 49.76 ms, p95 50.94 ms, profile palm=40.91 ms + hand=8.57 ms
+```
+
+`pinto-npu` is a runtime success and a latency win over `pinto-cpu`, but it is still experimental because the 10-frame landmark comparison does not clearly beat the default `npu-full` path.
 
 ## Troubleshooting Notes
 

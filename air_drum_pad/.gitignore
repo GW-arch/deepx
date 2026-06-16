@@ -2,5 +2,6 @@ palm_decode_smoke.png
 eval_runs/
 docs/live_captures/
 profiler.json
+pinto_dxnn_transfer/
 models/vendor/palm_detection_lite.onnx
 models/vendor/palm_detection_lite.dxnn

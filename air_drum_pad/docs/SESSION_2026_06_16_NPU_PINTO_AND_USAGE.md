@@ -8,7 +8,7 @@ Date: 2026-06-16
 - The experimental full-NPU path exists via `--palm-dxnn models/vendor/palm_detection_lite.dxnn`, but it is not a valid tracker yet: palm inference runs on the NPU, but it produces no accepted palm detections in the benchmark path, so the hand landmark stage never runs.
 - The low-accuracy concern is mainly in the hand landmark `.dxnn` INT8 behavior versus CPU float TFLite. The palm stage is a separate issue.
 - Landmark correction is now opt-in because measured correction made the default right-hand error worse.
-- PINTO hand landmark ONNX can run on CPU through the new `pinto-cpu` backend. NPU adoption is blocked until the model can be compiled to `.dxnn`.
+- PINTO hand landmark can run through both the `pinto-cpu` ONNX backend and the new `pinto-npu` DXNN backend.
 - The SNU compile server was unreachable from this board during the session (`43.203.143.33:443` timed out). Local DX-COM install is not practical on this Orange Pi because the local board is `aarch64` while the compiler documentation/package path targets `x86_64/amd64`.
 
 ## Backend Modes
@@ -20,6 +20,7 @@ Current app-facing backend modes:
 - `npu`: NPU hand landmark where supported by the current tracker path.
 - `npu-full`: Full tracker wrapper. By default this is CPU palm plus NPU hand landmark.
 - `pinto-cpu`: Experimental PINTO ONNX hand landmark on CPU, using the existing palm/ROI flow.
+- `pinto-npu`: Experimental PINTO DXNN hand landmark on NPU, using the existing CPU palm/ROI flow.
 
 Important distinction:
 
@@ -187,6 +188,34 @@ Repo additions for NPU adoption:
 - `models/dxcom/pinto_hand_landmark_sparse.json`
 - `models/dxnn_layout.pinto_hand_landmark_sparse.json`
 
+Transferred compiled artifacts:
+
+- `models/vendor/pinto_hand_landmark_sparse.dxnn`
+- `models/vendor/pinto_hand_landmark_sparse_1x3x224x224_no_round.onnx`
+- `build/dxcom/pinto_hand_landmark_sparse_no_round/compiler.log`
+
+Artifact hashes:
+
+- `.dxnn`: `8f35a014f9908f210a71edbba3808bb4940a2ca60ee3b45166bafac5aabdeccb`
+- no-round ONNX: `eba37c1b40b2ce6be52b0fa30cbc7b234996950f038fec158229d1022bc9d403`
+- `compiler.log`: `e1321908084905b3f159aa15f9bfb386624a716a0ca42550fbc9ed5d902f13ee`
+
+Compile note:
+
+- Dynamic ONNX and fixed-shape ONNX both failed DX-COM lowering on unsupported `onnx.Round`.
+- `Round_0` only affects final handedness, so the compileable no-round ONNX replaces it with `Identity`.
+- Runtime treats `lefthand_0_or_righthand_1` as a sigmoid probability and thresholds it at `>=0.5`.
+
+Board-side DXRT smoke:
+
+```text
+inputs [{'name': 'input', 'shape': [1, 224, 224, 3], 'dtype': uint8}]
+outputs:
+  0 xyz_x21 [1, 63] float32
+  1 hand_score [1, 1] float32
+  2 lefthand_0_or_righthand_1 [1, 1] float32
+```
+
 CPU benchmark with the existing palm/ROI flow:
 
 - Right hand: mean about `0.0454`, tips about `0.0449`, max(avg) about `0.0864`, max about `0.2272`.
@@ -205,6 +234,52 @@ Result:
 - p95: `97.13 ms`.
 - FPS(mean): `11.25`.
 - Profile: `palm=40.19 ms`, `hand=48.27 ms`.
+
+`pinto-npu` latency smoke:
+
+```bash
+python3 tools/benchmark_dataset.py --backends pinto-npu --no-compare --limit 10 --warmup 0
+```
+
+Result:
+
+- Latency mean: `53.54 ms` in the first smoke run.
+- p50: `50.53 ms`.
+- p95: `64.15 ms`.
+- FPS(mean): `18.68`.
+- Profile: `palm=42.84 ms`, `hand=10.32 ms`.
+
+Matched backend comparison:
+
+```bash
+python3 tools/benchmark_dataset.py --backends cpu-baseline,pinto-cpu,pinto-npu,npu-full --limit 10 --warmup 0
+```
+
+Result:
+
+| Backend | Mean | P95 | Profile |
+|---------|-----:|----:|---------|
+| `cpu-baseline` | `87.73 ms` | `108.52 ms` | palm `41.70 ms` + hand `45.55 ms` |
+| `pinto-cpu` | `88.85 ms` | `99.99 ms` | palm `38.62 ms` + hand `49.85 ms` |
+| `pinto-npu` | `50.48 ms` | `54.48 ms` | palm `41.21 ms` + hand `9.00 ms` |
+| `npu-full` | `49.76 ms` | `50.94 ms` | palm `40.91 ms` + hand `8.57 ms` |
+
+Landmark error vs `cpu-baseline`:
+
+| Backend | Hand | n | Mean | Tips | Max(avg) | Max |
+|---------|------|--:|-----:|-----:|---------:|----:|
+| `pinto-cpu` | Right | 10 | `0.0176` | `0.0145` | `0.0321` | `0.0330` |
+| `pinto-cpu` | Left | 10 | `0.0103` | `0.0064` | `0.0198` | `0.0208` |
+| `pinto-npu` | Right | 10 | `0.0205` | `0.0313` | `0.0429` | `0.0441` |
+| `pinto-npu` | Left | 10 | `0.0115` | `0.0140` | `0.0278` | `0.0285` |
+| `npu-full` | Right | 10 | `0.0068` | `0.0100` | `0.0133` | `0.0154` |
+| `npu-full` | Left | 10 | `0.0129` | `0.0178` | `0.0264` | `0.0308` |
+
+Conclusion:
+
+- PINTO NPU adoption is no longer blocked at the runtime level.
+- It is a latency win over `pinto-cpu`.
+- It is not yet a default-path replacement because `npu-full` remains better on right-hand agreement in this smoke comparison.
 
 Live smoke command:
 
@@ -256,7 +331,7 @@ env DX_COMPILE_USER=user12 \
   ./tools/compile_server_snu.sh all
 ```
 
-Observed blocker:
+Observed SNU blocker:
 
 - `ssh -p 443 ... user12@43.203.143.33 true` timed out.
 - The compile helper also timed out.
@@ -267,17 +342,23 @@ Local compiler blocker:
 - Documentation/package path targets `x86_64/amd64`.
 - Current board is `aarch64`, so local DX-COM compilation is not practical here.
 
+Resolved compile route:
+
+- An x86_64 Ubuntu 22.04.4 PC compiled the no-round fixed-shape ONNX locally.
+- DX-COM CLI reported `2.3.0`; generated `.dxnn` metadata reports `v2.3.0-rc.5`.
+- The board can load and run the resulting `.dxnn` through DXRT v3.2.0, but this version mismatch should remain visible in future compatibility checks.
+
 ## Files Touched This Session
 
 Code/config changes:
 
-- `hand_tracker.py`: added `PintoOnnxHandLandmark`, wired `pinto-cpu`, added optional hand ONNX path in full tracker construction.
-- `main.py`: added `pinto-cpu` backend and `--hand-onnx`; landmark correction default now empty.
-- `tools/benchmark_dataset.py`: added `pinto-cpu` and `--hand-onnx`.
-- `tools/guided_eval.py`: added `pinto-cpu`, `--hand-onnx`, and empty landmark-correction default.
+- `hand_tracker.py`: added `PintoOnnxHandLandmark`, wired `pinto-cpu`, added `pinto-npu`, added tensor-binary handedness support for DXNN layouts, and added optional hand ONNX path in full tracker construction.
+- `main.py`: added `pinto-cpu`, `pinto-npu`, and `--hand-onnx`; landmark correction default now empty.
+- `tools/benchmark_dataset.py`: added `pinto-cpu`, `pinto-npu`, and `--hand-onnx`.
+- `tools/guided_eval.py`: added `pinto-cpu`, `pinto-npu`, `--hand-onnx`, and empty landmark-correction default.
 - `scripts/run_npu_full_piano.sh`: correction opt-in through `USE_LANDMARK_CORRECTION=1` or explicit `LANDMARK_CORRECTION`.
 - `models/dxcom/pinto_hand_landmark_sparse.json`: compile config for PINTO ONNX.
-- `models/dxnn_layout.pinto_hand_landmark_sparse.json`: output layout metadata for future `.dxnn`.
+- `models/dxnn_layout.pinto_hand_landmark_sparse.json`: runtime layout metadata for the compiled PINTO `.dxnn`.
 
 Docs/tests:
 
@@ -306,7 +387,7 @@ python3 -m unittest tests.test_cli_defaults tests.test_benchmark_dataset
 
 Observed result:
 
-- `9` tests passed.
+- `10` tests passed.
 
 Default NPU piano launcher smoke:
 
@@ -325,7 +406,6 @@ No `+CALIB` suffix was present, confirming correction is off by default.
 ## Next Actions
 
 1. Debug palm `.dxnn` outputs against CPU TFLite palm outputs before treating `--palm-dxnn` as valid.
-2. Once SNU compile server is reachable, compile PINTO ONNX to `pinto_hand_landmark_sparse.dxnn` and compare against `pinto-cpu`.
-3. If an x86_64 machine with DX-COM credentials is available, compile locally there instead of on the Orange Pi.
-4. Re-test STMicro native INT8 TFLite only after a working compile route exists.
-5. Keep default live demo on CPU palm plus NPU hand landmark until palm-NPU detection produces accepted palms and nonzero hand-stage time.
+2. Expand `pinto-npu` beyond the 10-frame smoke comparison before making it a default candidate.
+3. Re-test STMicro native INT8 TFLite only after producing a DEEPX-compatible `.dxnn`.
+4. Keep default live demo on CPU palm plus the existing MediaPipe-derived NPU hand landmark until palm-NPU detection produces accepted palms and nonzero hand-stage time.
