@@ -1,0 +1,49 @@
+{
+  "title": "Drum kick clap tom_l demo",
+  "mode": "drum",
+  "duration_s": 20.0,
+  "notes": "Simple three-pad demo using only kick, clap, and tom_l. Start after the count-in/cue delay.",
+  "click": {
+    "enabled": true,
+    "start_s": 0.0,
+    "end_s": 19.4,
+    "beat_s": 0.6,
+    "accent_every": 4
+  },
+  "events": [
+    {"t": 2.0, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 2.6, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 3.2, "sound": "kick", "label": "K", "velocity": 0.95},
+    {"t": 3.8, "sound": "clap", "label": "CL", "velocity": 0.88},
+
+    {"t": 4.4, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 5.0, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 5.6, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 6.2, "sound": "tom_l", "label": "TL", "velocity": 0.95},
+
+    {"t": 6.8, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 7.4, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 8.0, "sound": "kick", "label": "K", "velocity": 0.95},
+    {"t": 8.6, "sound": "clap", "label": "CL", "velocity": 0.88},
+
+    {"t": 9.2, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 9.8, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 10.4, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 11.0, "sound": "tom_l", "label": "TL", "velocity": 0.95},
+
+    {"t": 11.6, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 12.2, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 12.8, "sound": "kick", "label": "K", "velocity": 0.95},
+    {"t": 13.4, "sound": "clap", "label": "CL", "velocity": 0.88},
+
+    {"t": 14.0, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 14.6, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 15.2, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 15.8, "sound": "tom_l", "label": "TL", "velocity": 1.0},
+
+    {"t": 16.4, "sound": "kick", "label": "K", "velocity": 1.0},
+    {"t": 17.0, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 17.6, "sound": "clap", "label": "CL", "velocity": 0.88},
+    {"t": 18.2, "sound": "tom_l", "label": "TL", "velocity": 1.0}
+  ]
+}

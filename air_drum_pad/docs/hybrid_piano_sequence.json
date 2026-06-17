@@ -1,0 +1,317 @@
+{
+  "title": "Hybrid target+decoded: Piano airplane melody",
+  "mode": "piano",
+  "duration_s": 18.0,
+  "notes": "Public-domain Mary Had a Little Lamb style melody. Start after the 2-second count-in.",
+  "click": {
+    "enabled": true,
+    "start_s": 0.0,
+    "end_s": 17.5,
+    "beat_s": 0.5,
+    "accent_every": 4
+  },
+  "events": [
+    {
+      "t": 0.339341,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.14,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 1.323392,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.14,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 2.687144,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 2.954367,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 3.126273,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 3.369823,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 3.598297,
+      "sound": "C4",
+      "label": "C",
+      "duration": 0.45,
+      "matched_actual_t": 3.830968,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 4.121644,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 4.363394,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 4.72466,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 5.006472,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 5.207079,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 5.482054,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 5.507079,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.65,
+      "velocity": 0.6723999999999999,
+      "timing_decompressed": true
+    },
+    {
+      "t": 6.178955,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 6.248549,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 6.605664,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 6.646756,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 7.163778,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.65,
+      "matched_actual_t": 7.22747,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 7.643411,
+      "sound": "G5",
+      "duration": 0.52,
+      "velocity": 0.14,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 8.158568,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 8.220233,
+      "matched_actual_sound": "G5",
+      "velocity": 1.0
+    },
+    {
+      "t": 8.526523,
+      "sound": "G4",
+      "label": "G",
+      "duration": 0.45,
+      "matched_actual_t": 8.536837,
+      "matched_actual_sound": "G5",
+      "velocity": 1.0
+    },
+    {
+      "t": 9.001061,
+      "sound": "G4",
+      "label": "G",
+      "duration": 0.65,
+      "matched_actual_t": 9.001474,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 9.906207,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 9.869732,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 10.284205,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.14,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 10.592141,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 10.627974,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 11.032787,
+      "sound": "C4",
+      "label": "C",
+      "duration": 0.45,
+      "matched_actual_t": 11.045537,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 11.464265,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 11.450368,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 11.857675,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 11.802326,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 12.243263,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.14,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 12.59766,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 12.635639,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 12.964706,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 12.95098,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 13.264274,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.14,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 13.632634,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 13.684214,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 14.004492,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 14.006239,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 14.466738,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 14.453803,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 14.955538,
+      "sound": "E4",
+      "label": "E",
+      "duration": 0.45,
+      "matched_actual_t": 14.938247,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    },
+    {
+      "t": 15.469329,
+      "sound": "D4",
+      "label": "D",
+      "duration": 0.45,
+      "matched_actual_t": 15.457401,
+      "matched_actual_sound": "E5",
+      "velocity": 1.0
+    },
+    {
+      "t": 16.117986,
+      "sound": "C4",
+      "label": "C",
+      "duration": 1.2,
+      "matched_actual_t": 16.163869,
+      "matched_actual_sound": "F5",
+      "velocity": 1.0
+    }
+  ],
+  "hybrid": {
+    "target": "/home/orangepi/deepx/air_drum_pad/demo_sequences/piano_airplane_melody.json",
+    "actual": "/home/orangepi/deepx/air_drum_pad/docs/raw_piano_decoder_take.events.json",
+    "trim_start": 10.0,
+    "lead": 0.25,
+    "lag": 1.05,
+    "actual_weight": 0.72,
+    "min_gap": 0.3,
+    "actual_noise_velocity": 0.14,
+    "noise_min_gap": 0.24,
+    "noise_exclusion": 0.1,
+    "noise_events": 6,
+    "matches": 25,
+    "target_events": 26
+  }
+}

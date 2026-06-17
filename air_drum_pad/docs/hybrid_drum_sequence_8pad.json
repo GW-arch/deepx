@@ -1,0 +1,308 @@
+{
+  "title": "Hybrid target+decoded: Drum kick clap tom_l demo",
+  "mode": "drum",
+  "duration_s": 20.0,
+  "notes": "Simple three-pad demo using only kick, clap, and tom_l. Start after the count-in/cue delay.",
+  "click": {
+    "enabled": true,
+    "start_s": 0.0,
+    "end_s": 19.4,
+    "beat_s": 0.6,
+    "accent_every": 4
+  },
+  "events": [
+    {
+      "t": 2.671395,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 2.932493,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 3.070683,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 3.253726,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 3.524469,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 0.95,
+      "matched_actual_t": 3.650651,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 3.90812,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 3.950166,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 4.437822,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 4.45253,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 4.822353,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 4.753268,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 5.335183,
+      "sound": "clap",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 5.95146,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 6.088139,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 6.489394,
+      "sound": "tom_l",
+      "label": "TL",
+      "velocity": 0.95,
+      "matched_actual_t": 6.601936,
+      "matched_actual_sound": "tom_l"
+    },
+    {
+      "t": 7.058708,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 7.159316,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 7.43754,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 7.452139,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 8.184362,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 0.95,
+      "matched_actual_t": 8.256059,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 8.609521,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 8.613223,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 9.114478,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 9.081219,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 9.40117,
+      "sound": "clap",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 9.736567,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 9.711898,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 10.381721,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 10.374612,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 10.740177,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 11.086979,
+      "sound": "tom_l",
+      "label": "TL",
+      "velocity": 0.95,
+      "matched_actual_t": 11.120804,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 11.513462,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 11.479808,
+      "matched_actual_sound": "tom_l"
+    },
+    {
+      "t": 12.131437,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 12.104773,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 12.489218,
+      "sound": "clap",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 13.116891,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 0.95,
+      "matched_actual_t": 13.240127,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 13.720482,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 13.845114,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 14.286827,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 14.398371,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 14.791226,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 14.865591,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 15.462328,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 15.564344,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 15.899035,
+      "sound": "tom_l",
+      "label": "TL",
+      "velocity": 1.0,
+      "matched_actual_t": 15.937548,
+      "matched_actual_sound": "tom_l"
+    },
+    {
+      "t": 16.561749,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 16.624651,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 16.979664,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 16.971755,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 17.607883,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 17.610948,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 17.990617,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 18.276079,
+      "sound": "tom_l",
+      "label": "TL",
+      "velocity": 1.0,
+      "matched_actual_t": 18.305665,
+      "matched_actual_sound": "tom_l"
+    },
+    {
+      "t": 18.812569,
+      "sound": "tom_l",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
+    }
+  ],
+  "hybrid": {
+    "target": "/home/orangepi/deepx/air_drum_pad/demo_sequences/drum_simple_groove.json",
+    "actual": "/home/orangepi/deepx/air_drum_pad/docs/raw_drum_decoder_take_8pad.events.json",
+    "trim_start": 10.0,
+    "lead": 0.25,
+    "lag": 0.95,
+    "actual_weight": 0.72,
+    "min_gap": 0.3,
+    "actual_noise_velocity": 0.18,
+    "noise_min_gap": 0.22,
+    "noise_exclusion": 0.1,
+    "noise_events": 6,
+    "matches": 28,
+    "target_events": 28
+  }
+}
