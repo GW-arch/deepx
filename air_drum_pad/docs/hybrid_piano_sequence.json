@@ -15,7 +15,7 @@
       "t": 0.339341,
       "sound": "E5",
       "duration": 0.52,
-      "velocity": 0.14,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
@@ -24,14 +24,14 @@
       "t": 1.323392,
       "sound": "E5",
       "duration": 0.52,
-      "velocity": 0.14,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 2.687144,
-      "sound": "E4",
+      "t": 2.763494,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 2.954367,
@@ -39,8 +39,8 @@
       "velocity": 1.0
     },
     {
-      "t": 3.126273,
-      "sound": "D4",
+      "t": 3.195858,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 3.369823,
@@ -48,8 +48,17 @@
       "velocity": 1.0
     },
     {
-      "t": 3.598297,
-      "sound": "C4",
+      "t": 3.369823,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 3.664774,
+      "sound": "C5",
       "label": "C",
       "duration": 0.45,
       "matched_actual_t": 3.830968,
@@ -57,8 +66,17 @@
       "velocity": 1.0
     },
     {
-      "t": 4.121644,
-      "sound": "D4",
+      "t": 3.830968,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 4.190715,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 4.363394,
@@ -66,8 +84,17 @@
       "velocity": 1.0
     },
     {
-      "t": 4.72466,
-      "sound": "E4",
+      "t": 4.363394,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 4.805178,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 5.006472,
@@ -75,8 +102,17 @@
       "velocity": 1.0
     },
     {
-      "t": 5.207079,
-      "sound": "E4",
+      "t": 5.006472,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 5.285643,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 5.482054,
@@ -84,16 +120,25 @@
       "velocity": 1.0
     },
     {
-      "t": 5.507079,
-      "sound": "E4",
+      "t": 5.482054,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 5.722054,
+      "sound": "E5",
       "label": "E",
       "duration": 0.65,
       "velocity": 0.6723999999999999,
       "timing_decompressed": true
     },
     {
-      "t": 6.178955,
-      "sound": "D4",
+      "t": 6.198839,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 6.248549,
@@ -101,8 +146,17 @@
       "velocity": 1.0
     },
     {
-      "t": 6.605664,
-      "sound": "D4",
+      "t": 6.248549,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 6.617405,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 6.646756,
@@ -110,8 +164,17 @@
       "velocity": 1.0
     },
     {
-      "t": 7.163778,
-      "sound": "D4",
+      "t": 6.646756,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 7.181976,
+      "sound": "D5",
       "label": "D",
       "duration": 0.65,
       "matched_actual_t": 7.22747,
@@ -119,17 +182,26 @@
       "velocity": 1.0
     },
     {
+      "t": 7.22747,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
       "t": 7.643411,
       "sound": "G5",
       "duration": 0.52,
-      "velocity": 0.14,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 8.158568,
-      "sound": "E4",
+      "t": 8.176186,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 8.220233,
@@ -137,8 +209,17 @@
       "velocity": 1.0
     },
     {
-      "t": 8.526523,
-      "sound": "G4",
+      "t": 8.220233,
+      "sound": "G5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 8.52947,
+      "sound": "G5",
       "label": "G",
       "duration": 0.45,
       "matched_actual_t": 8.536837,
@@ -146,8 +227,8 @@
       "velocity": 1.0
     },
     {
-      "t": 9.001061,
-      "sound": "G4",
+      "t": 9.001179,
+      "sound": "G5",
       "label": "G",
       "duration": 0.65,
       "matched_actual_t": 9.001474,
@@ -155,8 +236,17 @@
       "velocity": 1.0
     },
     {
-      "t": 9.906207,
-      "sound": "E4",
+      "t": 9.001474,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 9.895786,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 9.869732,
@@ -167,14 +257,14 @@
       "t": 10.284205,
       "sound": "E5",
       "duration": 0.52,
-      "velocity": 0.14,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 10.592141,
-      "sound": "D4",
+      "t": 10.602379,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 10.627974,
@@ -182,8 +272,17 @@
       "velocity": 1.0
     },
     {
-      "t": 11.032787,
-      "sound": "C4",
+      "t": 10.627974,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 11.03643,
+      "sound": "C5",
       "label": "C",
       "duration": 0.45,
       "matched_actual_t": 11.045537,
@@ -191,8 +290,26 @@
       "velocity": 1.0
     },
     {
-      "t": 11.464265,
-      "sound": "D4",
+      "t": 11.045537,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 11.450368,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 11.460294,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 11.450368,
@@ -200,8 +317,8 @@
       "velocity": 1.0
     },
     {
-      "t": 11.857675,
-      "sound": "E4",
+      "t": 11.841861,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 11.802326,
@@ -212,14 +329,14 @@
       "t": 12.243263,
       "sound": "E5",
       "duration": 0.52,
-      "velocity": 0.14,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 12.59766,
-      "sound": "E4",
+      "t": 12.608511,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 12.635639,
@@ -227,8 +344,8 @@
       "velocity": 1.0
     },
     {
-      "t": 12.964706,
-      "sound": "E4",
+      "t": 12.960784,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 12.95098,
@@ -239,14 +356,14 @@
       "t": 13.264274,
       "sound": "E5",
       "duration": 0.52,
-      "velocity": 0.14,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 13.632634,
-      "sound": "E4",
+      "t": 13.647371,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 13.684214,
@@ -254,8 +371,17 @@
       "velocity": 1.0
     },
     {
-      "t": 14.004492,
-      "sound": "D4",
+      "t": 13.684214,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 14.004991,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 14.006239,
@@ -263,8 +389,26 @@
       "velocity": 1.0
     },
     {
-      "t": 14.466738,
-      "sound": "D4",
+      "t": 14.006239,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 14.453803,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 14.463042,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 14.453803,
@@ -272,8 +416,17 @@
       "velocity": 1.0
     },
     {
-      "t": 14.955538,
-      "sound": "E4",
+      "t": 14.938247,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 14.950598,
+      "sound": "E5",
       "label": "E",
       "duration": 0.45,
       "matched_actual_t": 14.938247,
@@ -281,8 +434,17 @@
       "velocity": 1.0
     },
     {
-      "t": 15.469329,
-      "sound": "D4",
+      "t": 15.457401,
+      "sound": "E5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 15.465921,
+      "sound": "D5",
       "label": "D",
       "duration": 0.45,
       "matched_actual_t": 15.457401,
@@ -290,27 +452,38 @@
       "velocity": 1.0
     },
     {
-      "t": 16.117986,
-      "sound": "C4",
+      "t": 16.131095,
+      "sound": "C5",
       "label": "C",
       "duration": 1.2,
       "matched_actual_t": 16.163869,
       "matched_actual_sound": "F5",
       "velocity": 1.0
+    },
+    {
+      "t": 16.163869,
+      "sound": "F5",
+      "duration": 0.52,
+      "velocity": 0.18,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
     }
   ],
   "hybrid": {
     "target": "/home/orangepi/deepx/air_drum_pad/demo_sequences/piano_airplane_melody.json",
     "actual": "/home/orangepi/deepx/air_drum_pad/docs/raw_piano_decoder_take.events.json",
     "trim_start": 10.0,
-    "lead": 0.25,
-    "lag": 1.05,
-    "actual_weight": 0.72,
-    "min_gap": 0.3,
-    "actual_noise_velocity": 0.14,
-    "noise_min_gap": 0.24,
-    "noise_exclusion": 0.1,
+    "lead": 0.35,
+    "lag": 1.1,
+    "actual_weight": 0.8,
+    "min_gap": 0.24,
+    "actual_noise_velocity": 0.24,
+    "matched_noise_velocity": 0.18,
+    "noise_min_gap": 0.14,
+    "noise_exclusion": 0.03,
     "noise_events": 6,
+    "matched_noise_events": 19,
     "matches": 25,
     "target_events": 26
   }

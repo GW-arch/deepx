@@ -171,20 +171,41 @@ def draw_recent_panel(
     max_items: int,
 ) -> None:
     h, w = frame.shape[:2]
-    x0 = 24
-    panel_w = min(560, max(320, w // 3))
-    line_h = 34
-    panel_h = 44 + max(1, max_items) * line_h
-    y0 = max(122, h - panel_h - 22)
+    if mode == "drum":
+        # Keep the drum recent-hit UI below the 8-pad grid.  The report-style
+        # tom_l pad occupies the lower-left grid cell, so the large live panel
+        # used for piano would hide the pad the demo mostly strikes.
+        max_items = min(max_items, 3)
+        x0 = 24
+        line_h = 24
+        panel_w = 210
+        panel_h = 34 + max(1, max_items) * line_h
+        y0 = h - panel_h - 12
+        title_scale = 0.50
+        item_scale = 0.56
+        title_y = y0 + 23
+        first_item_y = y0 + 48
+        x_text = x0 + 12
+    else:
+        x0 = 24
+        panel_w = min(560, max(320, w // 3))
+        line_h = 34
+        panel_h = 44 + max(1, max_items) * line_h
+        y0 = max(122, h - panel_h - 22)
+        title_scale = 0.65
+        item_scale = 0.72
+        title_y = y0 + 30
+        first_item_y = y0 + 64
+        x_text = x0 + 16
 
     cv2.rectangle(frame, (x0, y0), (x0 + panel_w, y0 + panel_h), (20, 20, 20), -1)
-    put_text_shadow(frame, "Recent strikes", (x0 + 12, y0 + 30), 0.65, (240, 240, 240), 1)
+    put_text_shadow(frame, "Recent strikes", (x0 + 12, title_y), title_scale, (240, 240, 240), 1)
 
     recent = active_recent_events(events, t_s, hold_s=hold_s, max_items=max_items)
     for i, event in enumerate(recent):
         label = event_label(mode, event)
         color = event_color(mode, event)
-        put_text_shadow(frame, label, (x0 + 16, y0 + 64 + i * line_h), 0.72, color, 2)
+        put_text_shadow(frame, label, (x_text, first_item_y + i * line_h), item_scale, color, 2)
 
 
 DEMO_DRUM_PADS: tuple[dict[str, Any], ...] = (
@@ -236,7 +257,7 @@ def draw_drum_pads_from_sequence(
 
     # Strong enough to replace the recorded raw pad flash, light enough to keep
     # the hand/camera view visible.
-    cv2.addWeighted(overlay, 0.34, frame, 0.66, 0, frame)
+    cv2.addWeighted(overlay, 0.96, frame, 0.04, 0, frame)
     for x1, y1, x2, y2, color, is_active, label in draw_items:
         thickness = 5 if is_active else 2
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)

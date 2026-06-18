@@ -12,7 +12,7 @@
   },
   "events": [
     {
-      "t": 2.671395,
+      "t": 2.745994,
       "sound": "kick",
       "label": "K",
       "velocity": 1.0,
@@ -20,7 +20,7 @@
       "matched_actual_sound": "kick"
     },
     {
-      "t": 3.070683,
+      "t": 3.122981,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -28,7 +28,7 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 3.524469,
+      "t": 3.560521,
       "sound": "kick",
       "label": "K",
       "velocity": 0.95,
@@ -36,7 +36,7 @@
       "matched_actual_sound": "kick"
     },
     {
-      "t": 3.90812,
+      "t": 3.920133,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -44,7 +44,7 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 4.437822,
+      "t": 4.442024,
       "sound": "kick",
       "label": "K",
       "velocity": 1.0,
@@ -52,7 +52,7 @@
       "matched_actual_sound": "kick"
     },
     {
-      "t": 4.822353,
+      "t": 4.802614,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -60,40 +60,58 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 5.335183,
+      "t": 5.388146,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
+      "matched_actual_t": 5.335183,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 6.088139,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 6.110511,
+      "sound": "tom_l",
+      "label": "TL",
+      "velocity": 0.95,
+      "matched_actual_t": 6.088139,
+      "matched_actual_sound": "kick"
+    },
+    {
+      "t": 6.601936,
+      "sound": "tom_l",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 6.641549,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
+      "matched_actual_t": 6.601936,
+      "matched_actual_sound": "tom_l"
+    },
+    {
+      "t": 7.159316,
       "sound": "clap",
       "duration": 0.52,
-      "velocity": 0.18,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 5.95146,
-      "sound": "clap",
-      "label": "CL",
-      "velocity": 0.88,
-      "matched_actual_t": 6.088139,
-      "matched_actual_sound": "kick"
-    },
-    {
-      "t": 6.489394,
-      "sound": "tom_l",
-      "label": "TL",
-      "velocity": 0.95,
-      "matched_actual_t": 6.601936,
-      "matched_actual_sound": "tom_l"
-    },
-    {
-      "t": 7.058708,
-      "sound": "kick",
-      "label": "K",
-      "velocity": 1.0,
-      "matched_actual_t": 7.159316,
-      "matched_actual_sound": "clap"
-    },
-    {
-      "t": 7.43754,
+      "t": 7.441711,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -101,7 +119,7 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 8.184362,
+      "t": 8.204847,
       "sound": "kick",
       "label": "K",
       "velocity": 0.95,
@@ -109,7 +127,16 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 8.609521,
+      "t": 8.256059,
+      "sound": "clap",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 8.610578,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -117,7 +144,7 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 9.114478,
+      "t": 9.104975,
       "sound": "kick",
       "label": "K",
       "velocity": 1.0,
@@ -128,13 +155,13 @@
       "t": 9.40117,
       "sound": "clap",
       "duration": 0.52,
-      "velocity": 0.18,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 9.736567,
+      "t": 9.729518,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -142,7 +169,16 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 10.381721,
+      "t": 10.374612,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 10.37969,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -153,13 +189,13 @@
       "t": 10.740177,
       "sound": "kick",
       "duration": 0.52,
-      "velocity": 0.18,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 11.086979,
+      "t": 11.096643,
       "sound": "tom_l",
       "label": "TL",
       "velocity": 0.95,
@@ -167,7 +203,25 @@
       "matched_actual_sound": "kick"
     },
     {
-      "t": 11.513462,
+      "t": 11.120804,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 11.479808,
+      "sound": "tom_l",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 11.503846,
       "sound": "kick",
       "label": "K",
       "velocity": 1.0,
@@ -175,7 +229,7 @@
       "matched_actual_sound": "tom_l"
     },
     {
-      "t": 12.131437,
+      "t": 12.123818,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -186,37 +240,54 @@
       "t": 12.489218,
       "sound": "clap",
       "duration": 0.52,
-      "velocity": 0.18,
+      "velocity": 0.16,
       "label": "noise",
-      "source": "actual-decoded-noise",
+      "source": "matched-decoded-noise",
       "visible": false
     },
     {
-      "t": 13.116891,
+      "t": 12.551374,
       "sound": "kick",
       "label": "K",
       "velocity": 0.95,
+      "matched_actual_t": 12.489218,
+      "matched_actual_sound": "clap"
+    },
+    {
+      "t": 13.240127,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.16,
+      "label": "noise",
+      "source": "matched-decoded-noise",
+      "visible": false
+    },
+    {
+      "t": 13.272102,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
       "matched_actual_t": 13.240127,
       "matched_actual_sound": "kick"
     },
     {
-      "t": 13.720482,
-      "sound": "clap",
-      "label": "CL",
-      "velocity": 0.88,
+      "t": 13.876091,
+      "sound": "kick",
+      "label": "K",
+      "velocity": 1.0,
       "matched_actual_t": 13.845114,
       "matched_actual_sound": "kick"
     },
     {
-      "t": 14.286827,
-      "sound": "kick",
-      "label": "K",
-      "velocity": 1.0,
+      "t": 14.438697,
+      "sound": "clap",
+      "label": "CL",
+      "velocity": 0.88,
       "matched_actual_t": 14.398371,
       "matched_actual_sound": "clap"
     },
     {
-      "t": 14.791226,
+      "t": 14.932473,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -224,15 +295,16 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 15.462328,
-      "sound": "clap",
-      "label": "CL",
-      "velocity": 0.88,
-      "matched_actual_t": 15.564344,
-      "matched_actual_sound": "kick"
+      "t": 15.564344,
+      "sound": "kick",
+      "duration": 0.52,
+      "velocity": 0.24,
+      "label": "noise",
+      "source": "actual-decoded-noise",
+      "visible": false
     },
     {
-      "t": 15.899035,
+      "t": 15.910038,
       "sound": "tom_l",
       "label": "TL",
       "velocity": 1.0,
@@ -240,7 +312,7 @@
       "matched_actual_sound": "tom_l"
     },
     {
-      "t": 16.561749,
+      "t": 16.579721,
       "sound": "kick",
       "label": "K",
       "velocity": 1.0,
@@ -248,7 +320,7 @@
       "matched_actual_sound": "kick"
     },
     {
-      "t": 16.979664,
+      "t": 16.977404,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -256,7 +328,7 @@
       "matched_actual_sound": "clap"
     },
     {
-      "t": 17.607883,
+      "t": 17.608758,
       "sound": "clap",
       "label": "CL",
       "velocity": 0.88,
@@ -267,13 +339,13 @@
       "t": 17.990617,
       "sound": "kick",
       "duration": 0.52,
-      "velocity": 0.18,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
     },
     {
-      "t": 18.276079,
+      "t": 18.284532,
       "sound": "tom_l",
       "label": "TL",
       "velocity": 1.0,
@@ -284,7 +356,7 @@
       "t": 18.812569,
       "sound": "tom_l",
       "duration": 0.52,
-      "velocity": 0.18,
+      "velocity": 0.24,
       "label": "noise",
       "source": "actual-decoded-noise",
       "visible": false
@@ -294,14 +366,16 @@
     "target": "/home/orangepi/deepx/air_drum_pad/demo_sequences/drum_simple_groove.json",
     "actual": "/home/orangepi/deepx/air_drum_pad/docs/raw_drum_decoder_take_8pad.events.json",
     "trim_start": 10.0,
-    "lead": 0.25,
-    "lag": 0.95,
-    "actual_weight": 0.72,
-    "min_gap": 0.3,
-    "actual_noise_velocity": 0.18,
-    "noise_min_gap": 0.22,
-    "noise_exclusion": 0.1,
+    "lead": 0.35,
+    "lag": 1.1,
+    "actual_weight": 0.8,
+    "min_gap": 0.24,
+    "actual_noise_velocity": 0.24,
+    "matched_noise_velocity": 0.16,
+    "noise_min_gap": 0.14,
+    "noise_exclusion": 0.03,
     "noise_events": 6,
+    "matched_noise_events": 8,
     "matches": 28,
     "target_events": 28
   }

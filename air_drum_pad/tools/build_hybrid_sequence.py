@@ -43,6 +43,12 @@ def parse_args() -> argparse.Namespace:
         default=0.0,
         help="Add unmatched actual decoded hits as a low-volume realism/noise layer",
     )
+    p.add_argument(
+        "--matched-noise-velocity",
+        type=float,
+        default=0.0,
+        help="Also add low-volume decoded hits for matched events when decoded sound differs from the target",
+    )
     p.add_argument("--noise-min-gap", type=float, default=0.22)
     p.add_argument("--noise-exclusion", type=float, default=0.08)
     return p.parse_args()
@@ -99,9 +105,12 @@ def main() -> int:
     primary_times: list[float] = []
     matches = 0
     actual_weight = max(0.0, min(1.0, float(args.actual_weight)))
+    matched_noise_velocity = max(0.0, min(1.0, float(args.matched_noise_velocity)))
+    matched_noise_added = 0
 
     for target_event in target_events:
         target_t = float(target_event.get("t", 0.0))
+        matched_noise_event: dict[str, Any] | None = None
         match_idx, match = nearest_unused_actual(
             actual_events,
             used,
@@ -117,6 +126,19 @@ def main() -> int:
             out_event["matched_actual_t"] = round(actual_t, 6)
             out_event["matched_actual_sound"] = str(match.get("sound", ""))
             out_event["velocity"] = float(target_event.get("velocity", 1.0))
+            actual_sound = str(match.get("sound", ""))
+            target_sound = str(target_event.get("sound", ""))
+            if matched_noise_velocity > 0.0 and actual_sound and actual_sound != target_sound:
+                matched_noise_event = {
+                    "t": round(actual_t, 6),
+                    "sound": actual_sound,
+                    "duration": float(match.get("duration", target_event.get("duration", 0.32))),
+                    "velocity": matched_noise_velocity,
+                    "label": "noise",
+                    "source": "matched-decoded-noise",
+                    "visible": False,
+                }
+                matched_noise_added += 1
             matches += 1
         else:
             candidate_t = target_t
@@ -131,6 +153,8 @@ def main() -> int:
                 out_event["timing_decompressed"] = True
         out_event["t"] = round(candidate_t, 6)
         hybrid_events.append(out_event)
+        if matched_noise_event is not None:
+            hybrid_events.append(matched_noise_event)
         primary_times.append(candidate_t)
 
     noise_velocity = max(0.0, min(1.0, float(args.actual_noise_velocity)))
@@ -175,9 +199,11 @@ def main() -> int:
         "actual_weight": actual_weight,
         "min_gap": args.min_gap,
         "actual_noise_velocity": noise_velocity,
+        "matched_noise_velocity": matched_noise_velocity,
         "noise_min_gap": args.noise_min_gap,
         "noise_exclusion": args.noise_exclusion,
         "noise_events": noise_added,
+        "matched_noise_events": matched_noise_added,
         "matches": matches,
         "target_events": len(target_events),
     }
@@ -185,7 +211,7 @@ def main() -> int:
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(out, indent=2) + "\n", encoding="utf-8")
     print(f"wrote {output}")
-    print(f"matches={matches}/{len(target_events)} noise_events={noise_added}")
+    print(f"matches={matches}/{len(target_events)} noise_events={noise_added} matched_noise_events={matched_noise_added}")
     return 0
 
 
