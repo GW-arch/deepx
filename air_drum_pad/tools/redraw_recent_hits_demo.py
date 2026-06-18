@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import Any
 
 import cv2
+import numpy as np
 
 PROJECT_DIR = Path(__file__).resolve().parents[1]
 if str(PROJECT_DIR) not in sys.path:
@@ -172,20 +173,19 @@ def draw_recent_panel(
 ) -> None:
     h, w = frame.shape[:2]
     if mode == "drum":
-        # Keep the drum recent-hit UI below the 8-pad grid.  The report-style
-        # tom_l pad occupies the lower-left grid cell, so the large live panel
-        # used for piano would hide the pad the demo mostly strikes.
+        # Keep the report-style panel width, but limit its height so tom_l is
+        # still visible in the 8-pad drum demo.
         max_items = min(max_items, 3)
         x0 = 24
-        line_h = 24
-        panel_w = 210
-        panel_h = 34 + max(1, max_items) * line_h
-        y0 = h - panel_h - 12
-        title_scale = 0.50
-        item_scale = 0.56
-        title_y = y0 + 23
-        first_item_y = y0 + 48
-        x_text = x0 + 12
+        panel_w = min(560, max(320, w // 3))
+        line_h = 34
+        panel_h = 44 + max(1, max_items) * line_h
+        y0 = max(122, h - panel_h - 22)
+        title_scale = 0.65
+        item_scale = 0.72
+        title_y = y0 + 30
+        first_item_y = y0 + 64
+        x_text = x0 + 16
     else:
         x0 = 24
         panel_w = min(560, max(320, w // 3))
@@ -235,6 +235,53 @@ def active_sounds(
     return {str(recent[-1].get("sound", ""))}
 
 
+def restore_recorded_drum_recent_panel(frame: Any) -> None:
+    """Remove the live decoder's baked-in Recent strikes panel when present."""
+    h, w = frame.shape[:2]
+    x0 = 24
+    panel_w = min(560, max(320, w // 3))
+    x1 = min(w, x0 + panel_w)
+    y_min = max(122, h - (44 + 8 * 34) - 22)
+    y_bottom = min(h, h - 22)
+    if x1 <= x0 + 32 or y_bottom <= y_min + 32:
+        return
+
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    inside_x0 = max(x0, x1 - 10)
+    inside_x1 = max(x0 + 1, x1 - 2)
+    outside_x0 = min(w - 1, x1 + 10)
+    outside_x1 = min(w, x1 + 30)
+    if outside_x1 <= outside_x0 + 1:
+        return
+
+    inside = gray[y_min:y_bottom, inside_x0:inside_x1].mean(axis=1)
+    outside = gray[y_min:y_bottom, outside_x0:outside_x1].mean(axis=1)
+    edge_score = outside - inside
+    smooth = np.convolve(edge_score, np.ones(11, dtype=np.float32) / 11.0, mode="same")
+    rows = np.flatnonzero(smooth > 15.0)
+    if rows.size == 0:
+        return
+
+    y0 = max(y_min, y_min + int(rows[0]) - 4)
+    y1 = y_bottom
+    if y1 <= y0 + 40:
+        return
+
+    region = frame[y0:y1, x0:x1].copy()
+    restored = np.clip(region.astype(np.float32) / 0.45, 0, 255).astype(np.uint8)
+
+    max_c = region.max(axis=2)
+    min_c = region.min(axis=2)
+    sat = max_c - min_c
+    text_mask = (
+        ((max_c > 135) & ((min_c > 90) | (sat > 35)))
+        | ((max_c > 80) & (sat > 55))
+    ).astype(np.uint8) * 255
+    text_mask = cv2.dilate(text_mask, np.ones((5, 5), np.uint8), iterations=2)
+    restored = cv2.inpaint(restored, text_mask, 3, cv2.INPAINT_TELEA)
+    frame[y0:y1, x0:x1] = restored
+
+
 def draw_drum_pads_from_sequence(
     frame: Any,
     *,
@@ -251,15 +298,13 @@ def draw_drum_pads_from_sequence(
         x2, y2 = int(float(pad["x2"]) * w), int(float(pad["y2"]) * h)
         base_color = tuple(int(c) for c in pad["color"])
         is_active = str(pad["sound"]) in active
-        fill_color = tuple(min(255, c + 105) for c in base_color) if is_active else base_color
+        fill_color = tuple(min(255, c + 100) for c in base_color) if is_active else base_color
         cv2.rectangle(overlay, (x1, y1), (x2, y2), fill_color, -1)
         draw_items.append((x1, y1, x2, y2, fill_color, is_active, str(pad["label"])))
 
-    # Strong enough to replace the recorded raw pad flash, light enough to keep
-    # the hand/camera view visible.
-    cv2.addWeighted(overlay, 0.96, frame, 0.04, 0, frame)
+    cv2.addWeighted(overlay, 0.25, frame, 0.75, 0, frame)
     for x1, y1, x2, y2, color, is_active, label in draw_items:
-        thickness = 5 if is_active else 2
+        thickness = 3 if is_active else 2
         cv2.rectangle(frame, (x1, y1), (x2, y2), color, thickness, cv2.LINE_AA)
         put_text_shadow(frame, label, (x1 + 8, y1 + 32), 0.8, (255, 255, 255), 2)
 
@@ -343,6 +388,8 @@ def main() -> int:
             if not ok:
                 break
             t_s = frame_idx / fps
+            if mode == "drum":
+                restore_recorded_drum_recent_panel(frame)
             draw_report_hud(frame, mode=mode)
             if mode == "drum":
                 draw_drum_pads_from_sequence(
